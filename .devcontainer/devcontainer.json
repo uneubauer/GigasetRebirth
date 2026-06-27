@@ -18,10 +18,10 @@
     // Führt nach dem Erstellen des Codespaces automatisch den npm-Install aus
     "postCreateCommand": "npm install",
 
-    // Schaltet den Web-Port 80 im Codespace frei, damit du das Kundencenter testen kannst
-    "forwardPorts":,
+    // Schaltet den Web-Port 8080 im Codespace frei, damit du das Kundencenter testen kannst
+    "forwardPorts": [8080],
     "portsAttributes": {
-        "80": {
+        "8080": {
             "label": "Gigaset WebUI Kundencenter",
             "onAutoForward": "openPreview"
         }
