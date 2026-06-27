@@ -238,21 +238,41 @@ app.get('/info/weather_search', (req, res) => {
 // =========================================================================
 // 4. SPEICHERN & REFRESH (Zurück zur Ortssuche)
 // =========================================================================
-app.get('/info/weather_save', (req, res) => {
-    const macRaw = req.query.mac || ''; const hsid = req.query.handsetid || ''; const city = req.query.city;
+// =========================================================================
+// 4. SPEICHERN & REFRESH (Jetzt als .jsp mit Schutz vor doppelter MAC)
+// =========================================================================
+app.get('/info/weather_save.jsp', (req, res) => {
+    let macRaw = req.query.mac || ''; 
+    const hsid = req.query.handsetid || ''; 
+    const city = req.query.city;
+
+    // Falls das Telefon die MAC doppelt schickt (z.B. mit Komma getrennt), nehmen wir nur die erste
+    if (macRaw.includes(',')) {
+        macRaw = macRaw.split(',')[0];
+    } else if (macRaw.includes('%2C')) {
+        macRaw = macRaw.split('%2C')[0];
+    }
+
     if (macRaw && hsid) {
-        const mac = macRaw.replace(/:/g, '').toUpperCase().trim(); let config = getConfig();
-        if (config.gateways[mac] && config.gateways[mac].handsets[hsid]) { config.gateways[mac].handsets[hsid].city = city || "Unbekannt"; saveConfig(config); }
+        const mac = macRaw.replace(/:/g, '').toUpperCase().trim(); 
+        let config = getConfig();
+        if (config.gateways && config.gateways[mac] && config.gateways[mac].handsets[hsid]) { 
+            config.gateways[mac].handsets[hsid].city = city || "Unbekannt"; 
+            saveConfig(config); 
+        }
     }
     
+    // Weiterleitung zurück zur Ortssuche (über die OMA-konforme menu.jsp)
     const redirectUrl = `/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}`;
 
-    res.set({ 
-        'Content-Type': 'application/xhtml+xml', 
-        'Refresh': `1; url=${redirectUrl.replace(/&amp;/g, '&')}`
-    });
-    res.send(`<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Gespeichert</title><meta http-equiv="refresh" content="1; URL=${redirectUrl}" /></head><body><p style="text-align:center; font-weight:bold; color:#2ecc71;">STADT GESPEICHERT!</p></body></html>`);
+    res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.header('Pragma', 'no-cache');
+
+    // Das XML wieder absolut einzeilig ohne Leerzeichen/Tabs jagen
+    const xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Gespeichert</title><meta http-equiv="refresh" content="1; URL=${redirectUrl.replace(/&amp;/g, '&')}" /></head><body><p style="text-align:center;"><b>STADT GESPEICHERT!</b></p></body></html>`;
+
+    return res.send(xml);
 });
 
 // =========================================================================
