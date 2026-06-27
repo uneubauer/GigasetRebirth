@@ -354,6 +354,32 @@ app.get('/info/weather_update', async (req, res) => {
 });
 // Start-Routing für PC-Browser
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'admin.html')); });
+// =========================================================================
+// AUTOMATISCHES WETTER-UPDATE IM CONTAINER (Alle 30 Minuten)
+// =========================================================================
+const DREISSIG_MINUTEN = 30 * 60 * 1000;
 
+// Funktion, die die Logik von /info/weather_update intern ausführt
+async function triggerInternalWeatherUpdate() {
+    try {
+        console.log(`[${new Date().toISOString()}] Automatisches Wetterupdate im Container gestartet...`);
+        
+        // Da wir uns im selben Prozess befinden, rufen wir die Route einfach lokal auf
+        const response = await fetch(`http://localhost:${PORT}/info/weather_update`);
+        const result = await response.text();
+        
+        console.log(`[${new Date().toISOString()}] Update-Ergebnis: ${result}`);
+    } catch (e) {
+        console.error(`[${new Date().toISOString()}] Fehler beim automatischen Wetterupdate:`, e.message);
+    }
+}
+
+// 1. Sofort beim Container-Start einmal ausführen, damit der Cache direkt da ist
+setTimeout(() => {
+    triggerInternalWeatherUpdate();
+}, 5000); // 5 Sekunden Verzögerung nach Boot, damit der Server sicher bereit ist
+
+// 2. Danach alle 30 Minuten endlos wiederholen
+setInterval(triggerInternalWeatherUpdate, DREISSIG_MINUTEN);
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => { console.log(`Schlanker Gigaset Rebirth Container laeuft auf Port ${PORT}`); });
