@@ -268,16 +268,23 @@ app.get('/info/weather_save.jsp', (req, res) => {
     return res.send(xml);
 });
 // =========================================================================
-// 5. REST-API FÜR DAS KUNDENCENTER
+// 5. WEB-ADMIN CONFIG API (Liefert Daten für admin.html)
 // =========================================================================
-app.get('/api/config', (req, res) => { res.json(getConfig()); });
-app.post('/api/save', (req, res) => {
-    const { mac, hsid, city } = req.body; if (!mac || !hsid) return res.status(400).json({ error: 'Missing params' });
-    let config = getConfig(); const cleanMac = mac.replace(/:/g, '').toUpperCase().trim();
-    if (config.gateways[cleanMac] && config.gateways[cleanMac].handsets[hsid]) {
-        config.gateways[cleanMac].handsets[hsid].city = city || "Unbekannt"; saveConfig(config); return res.json({ success: true });
+app.get('/api/config', (req, res) => {
+    const config = getConfig();
+    // Falls ein bestimmtes Mobilteil abgefragt wird, liefern wir dessen Details mit
+    const selMac = req.query.mac || '';
+    const selHs = req.query.hsid || '';
+    
+    let activeHandset = null;
+    if (selMac && selHs && config.gateways && config.gateways[selMac] && config.gateways[selMac].handsets) {
+        activeHandset = config.gateways[selMac].handsets[selHs] || null;
     }
-    res.status(404).json({ error: 'Device not found' });
+
+    return res.json({
+        gateways: config.gateways || {},
+        activeHandset: activeHandset
+    });
 });
 // =========================================================================
 // 6. WETTER-UPDATE DATA FETCH (BrightSky API / DWD Übersetzung)
