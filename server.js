@@ -241,17 +241,19 @@ app.get('/info/weather_search', (req, res) => {
 // =========================================================================
 // 4. SPEICHERN & REFRESH (Jetzt als .jsp mit Schutz vor doppelter MAC)
 // =========================================================================
+// =========================================================================
+// 4. SPEICHERN & REFRESH (Sicher gegen Express-Arrays bei doppelten Querys)
+// =========================================================================
 app.get('/info/weather_save.jsp', (req, res) => {
-    let macRaw = req.query.mac || ''; 
-    const hsid = req.query.handsetid || ''; 
-    const city = req.query.city;
+    // Wenn ein Parameter doppelt kommt, nimmt req.query.X das Array. 
+    // Wir zwingen es hier knallhart auf das erste Element als String.
+    let macRaw = Array.isArray(req.query.mac) ? String(req.query.mac[0]) : String(req.query.mac || '');
+    let hsid = Array.isArray(req.query.handsetid) ? String(req.query.handsetid[0]) : String(req.query.handsetid || '');
+    let city = Array.isArray(req.query.city) ? String(req.query.city[0]) : String(req.query.city || '');
 
-    // Falls das Telefon die MAC doppelt schickt (z.B. mit Komma getrennt), nehmen wir nur die erste
-    if (macRaw.includes(',')) {
-        macRaw = macRaw.split(',')[0];
-    } else if (macRaw.includes('%2C')) {
-        macRaw = macRaw.split('%2C')[0];
-    }
+    // Falls im ersten Element immer noch ein Komma drinsteckt, wegschneiden
+    if (macRaw.includes(',')) macRaw = macRaw.split(',')[0];
+    if (macRaw.includes('%2C')) macRaw = macRaw.split('%2C')[0];
 
     if (macRaw && hsid) {
         const mac = macRaw.replace(/:/g, '').toUpperCase().trim(); 
@@ -262,19 +264,16 @@ app.get('/info/weather_save.jsp', (req, res) => {
         }
     }
     
-    // Weiterleitung zurück zur Ortssuche (über die OMA-konforme menu.jsp)
     const redirectUrl = `/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}`;
 
     res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.header('Pragma', 'no-cache');
 
-    // Das XML wieder absolut einzeilig ohne Leerzeichen/Tabs jagen
     const xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Gespeichert</title><meta http-equiv="refresh" content="1; URL=${redirectUrl.replace(/&amp;/g, '&')}" /></head><body><p style="text-align:center;"><b>STADT GESPEICHERT!</b></p></body></html>`;
 
     return res.send(xml);
 });
-
 // =========================================================================
 // 5. REST-API FÜR DAS KUNDENCENTER
 // =========================================================================
