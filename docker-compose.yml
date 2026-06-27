@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  gigaset-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gigaset-wetter-container
+    ports:
+      - "80:80" # Mappt Port 80 deines Heimservers auf Port 80 im Container
+    environment:
+      - PORT=80
+    volumes:
+      # Verknüpft deinen lokalen Ordner mit dem WEB-INF Ordner im Container
+      - /home/user/docker/gigaset-data:/app/WEB-INF
+    restart: always
