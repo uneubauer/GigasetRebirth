@@ -198,19 +198,17 @@ app.get('/info/request.do', (req, res) => {
 
 
 // =========================================================================
-// 3. ORTSSUCHE & LISTENAUSWAHL (Exakte Übersetzung der JSP)
+// 3. ORTSSUCHE & LISTENAUSWAHL (Abfang für beide URL-Varianten)
 // =========================================================================
-app.get('/info/weather_search', (req, res) => {
+const handleWeatherSearch = (req, res) => {
     let macRaw = req.query.mac || '';
     let hsid = req.query.handsetid || '';
     
-    // mac direkt oben sauber formatieren, damit sie im gesamten Route-Scope verfügbar ist
     const mac = macRaw.replace(/:/g, '').toUpperCase().trim();
 
-    // >>> HIER GENAU STARTET DER NEUE ERKENNUNGS-BLOCK <<<
+    // AUTOMATISCHE ERKENNUNG
     if (mac && hsid) {
         const userAgent = req.headers['user-agent'] || ''; 
-        
         let config = getConfig();
         if (config.gateways && config.gateways[mac] && config.gateways[mac].handsets[hsid]) {
             let hs = config.gateways[mac].handsets[hsid];
@@ -218,17 +216,13 @@ app.get('/info/weather_search', (req, res) => {
 
             if (userAgent.includes('Gigaset')) {
                 const uaParts = userAgent.split(' ');
-                
-                // 1. Basis-Modell und Firmware holen
                 if (uaParts[0] && uaParts[0].includes('/')) {
                     const [rawBoxModel, boxFw] = uaParts[0].split('/');
                     const cleanBoxModel = rawBoxModel.replace(/_/g, ' ');
-                    
                     if (hs.box_model !== cleanBoxModel) { hs.box_model = cleanBoxModel; changed = true; }
                     if (hs.box_fw !== boxFw) { hs.box_fw = boxFw; changed = true; }
                 }
 
-                // 2. Das exakte MOBILTEIL-Modell holen
                 let detectedModel = '';
                 const modelMatch = userAgent.match(/Gigaset_([A-Za-z0-9]+)/);
                 if (modelMatch && modelMatch[1]) {
@@ -244,11 +238,10 @@ app.get('/info/weather_search', (req, res) => {
 
             if (changed) {
                 saveConfig(config);
-                console.log(`[Sync] Gerätedaten aktualisiert für HS ${hsid}: ${hs.hs_model} (${hs.box_model})`);
+                console.log(`[Sync] Gerätedaten aktualisiert für HS ${hsid}: ${hs.hs_model}`);
             }
         }
     }
-    // >>> HIER ENDET DER ERKENNUNGS-BLOCK <<<
     
     let cities = [];
     if (fs.existsSync(CITIES_PATH)) { 
@@ -259,27 +252,26 @@ app.get('/info/weather_search', (req, res) => {
         } 
     }
 
-    // Header sauber wie beim Tomcat setzen
+    // Header exakt setzen
     res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.header('Pragma', 'no-cache');
 
-    // 1. XML-Kopf und DTD (Exakt wie in der gelieferten JSP)
-    let xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtml-mobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Ort waehlen</title></head><body><p><b>Ort waehlen</b></p><ul>`;
+    // WICHTIG: DTD-Pfad korrigiert (ohne Bindestrich im Dateinamen, matcht die alte Spezifikation)
+    let xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Ort waehlen</title></head><body><p><b>Ort waehlen</b></p><ul>`;
     
-    // 2. Dynamische Städteliste einbauen (Zielt auf die weather_save.jsp Route)
     cities.forEach(c => { 
         const cityName = c.name || 'Unbekannt';
-        // Hier wird nun das sichere 'mac' verwendet und die Parameter sauber via &amp; verknüpft
         xml += `<li><a href="/info/weather_save.jsp?mac=${encodeURIComponent(mac)}&amp;handsetid=${encodeURIComponent(hsid)}&amp;city=${encodeURIComponent(cityName)}">${cityName}</a></li>`; 
     });
     
-    // 3. Schließen der Tags
     xml += `</ul></body></html>`;
-
-    // Alles ohne Zeilenumbrüche an das Telefon jagen
     return res.send(xml);
-});
+};
+
+// Hier registrieren wir beide Pfade, damit das Telefon auf jeden Fall trifft!
+app.get('/info/weather_search', handleWeatherSearch);
+app.get('/info/weather_search.jsp', handleWeatherSearch);
 // =========================================================================
 // 4. SPEICHERN & REFRESH (Absolut XML-konform escaped)
 // =========================================================================
