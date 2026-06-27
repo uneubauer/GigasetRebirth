@@ -203,9 +203,12 @@ app.get('/info/request.do', (req, res) => {
 app.get('/info/weather_search', (req, res) => {
     let macRaw = req.query.mac || '';
     let hsid = req.query.handsetid || '';
+    
+    // mac direkt oben sauber formatieren, damit sie im gesamten Route-Scope verfügbar ist
+    const mac = macRaw.replace(/:/g, '').toUpperCase().trim();
 
-    if (macRaw && hsid) {
-        const mac = macRaw.replace(/:/g, '').toUpperCase().trim();
+    // >>> HIER GENAU STARTET DER NEUE ERKENNUNGS-BLOCK <<<
+    if (mac && hsid) {
         const userAgent = req.headers['user-agent'] || ''; 
         
         let config = getConfig();
@@ -213,12 +216,10 @@ app.get('/info/weather_search', (req, res) => {
             let hs = config.gateways[mac].handsets[hsid];
             let changed = false;
 
-            // Beispiel User-Agent: "Gigaset_C610_IP/42.250.00.000 Handset/3"
-            // Oder: "Gigaset_S850H_IP/42.263.00.000"
             if (userAgent.includes('Gigaset')) {
                 const uaParts = userAgent.split(' ');
                 
-                // 1. Basis-Modell und Firmware holen (Erster Teil vor dem Leerzeichen)
+                // 1. Basis-Modell und Firmware holen
                 if (uaParts[0] && uaParts[0].includes('/')) {
                     const [rawBoxModel, boxFw] = uaParts[0].split('/');
                     const cleanBoxModel = rawBoxModel.replace(/_/g, ' ');
@@ -227,19 +228,13 @@ app.get('/info/weather_search', (req, res) => {
                     if (hs.box_fw !== boxFw) { hs.box_fw = boxFw; changed = true; }
                 }
 
-                // 2. Das exakte MOBILTEIL-Modell holen! 
-                // Gigaset-Basen hängen das oft als "Handset/X" oder direkt an. 
-                // Wenn im User-Agent ein bekannter Mobilteil-String auftaucht, extrahieren wir ihn:
+                // 2. Das exakte MOBILTEIL-Modell holen
                 let detectedModel = '';
                 const modelMatch = userAgent.match(/Gigaset_([A-Za-z0-9]+)/);
                 if (modelMatch && modelMatch[1]) {
-                    // Falls die Basis z.B. "C610_IP" heißt, das "_IP" wegschneiden, 
-                    // wenn das Handset ein C610 oder S850H ist
                     detectedModel = modelMatch[1].replace('IP', '').trim();
                 }
 
-                // Wenn wir ein Modell gefunden haben und es noch auf dem generischen Standard steht, 
-                // überschreiben wir es mit dem echten Namen (z.B. "Gigaset S850H")
                 const currentName = hs.hs_model || '';
                 if (detectedModel && (currentName.startsWith('Mobilteil') || currentName === '')) {
                     hs.hs_model = `Gigaset ${detectedModel}`;
@@ -253,6 +248,7 @@ app.get('/info/weather_search', (req, res) => {
             }
         }
     }
+    // >>> HIER ENDET DER ERKENNUNGS-BLOCK <<<
     
     let cities = [];
     if (fs.existsSync(CITIES_PATH)) { 
@@ -274,6 +270,7 @@ app.get('/info/weather_search', (req, res) => {
     // 2. Dynamische Städteliste einbauen (Zielt auf die weather_save.jsp Route)
     cities.forEach(c => { 
         const cityName = c.name || 'Unbekannt';
+        // Hier wird nun das sichere 'mac' verwendet und die Parameter sauber via &amp; verknüpft
         xml += `<li><a href="/info/weather_save.jsp?mac=${encodeURIComponent(mac)}&amp;handsetid=${encodeURIComponent(hsid)}&amp;city=${encodeURIComponent(cityName)}">${cityName}</a></li>`; 
     });
     
@@ -283,7 +280,6 @@ app.get('/info/weather_search', (req, res) => {
     // Alles ohne Zeilenumbrüche an das Telefon jagen
     return res.send(xml);
 });
-
 // =========================================================================
 // 4. SPEICHERN & REFRESH (Absolut XML-konform escaped)
 // =========================================================================
