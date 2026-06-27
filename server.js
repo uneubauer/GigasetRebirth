@@ -235,35 +235,63 @@ app.get('/info/weather_search', (req, res) => {
 });
 
 // =========================================================================
-// 4. SPEICHERN & REFRESH (Sicher gegen Express-Arrays bei doppelten Querys)
+// 4. SPEICHERN & REFRESH (Absolut XML-konform escaped)
 // =========================================================================
 app.get('/info/weather_save.jsp', (req, res) => {
-    // Wenn ein Parameter doppelt kommt, nimmt req.query.X das Array. 
-    // Wir zwingen es hier knallhart auf das erste Element als String.
-    let macRaw = Array.isArray(req.query.mac) ? String(req.query.mac[0]) : String(req.query.mac || '');
-    let hsid = Array.isArray(req.query.handsetid) ? String(req.query.handsetid[0]) : String(req.query.handsetid || '');
-    let city = Array.isArray(req.query.city) ? String(req.query.city[0]) : String(req.query.city || '');
+    let macRaw = req.query.mac || '';
+    let hsid = req.query.handsetid || '';
+    let city = req.query.city || '';
+    let mode = req.query.mode || 'weather';
+    const fromAdmin = req.query.fromAdmin === 'true';
 
-    // Falls im ersten Element immer noch ein Komma drinsteckt, wegschneiden
+    if (Array.isArray(macRaw)) macRaw = String(macRaw[0]);
+    if (Array.isArray(hsid)) hsid = String(hsid[0]);
+    if (Array.isArray(city)) city = String(city[0]);
+
     if (macRaw.includes(',')) macRaw = macRaw.split(',')[0];
     if (macRaw.includes('%2C')) macRaw = macRaw.split('%2C')[0];
 
     if (macRaw && hsid) {
-        const mac = macRaw.replace(/:/g, '').toUpperCase().trim(); 
+        const mac = macRaw.replace(/:/g, '').toUpperCase().trim();
         let config = getConfig();
-        if (config.gateways && config.gateways[mac] && config.gateways[mac].handsets[hsid]) { 
-            config.gateways[mac].handsets[hsid].city = city || "Unbekannt"; 
-            saveConfig(config); 
+
+        if (config.gateways && config.gateways[mac] && config.gateways[mac].handsets[hsid]) {
+            config.gateways[mac].handsets[hsid].city = city;
+            config.gateways[mac].handsets[hsid].mode = mode;
+
+            // Koordinaten-Matching aus cities.json
+            if (fs.existsSync(CITIES_PATH)) {
+                try {
+                    const citiesData = JSON.parse(fs.readFileSync(CITIES_PATH, 'utf8')).cities || [];
+                    const foundCity = citiesData.find(c => c.name.toLowerCase() === city.toLowerCase());
+                    if (foundCity) {
+                        config.gateways[mac].handsets[hsid].lat = foundCity.lat;
+                        config.gateways[mac].handsets[hsid].lon = foundCity.lon;
+                    }
+                } catch (e) {
+                    console.error("Fehler beim cities.json Match:", e);
+                }
+            }
+            saveConfig(config);
         }
     }
-    
-    const redirectUrl = `/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}`;
+
+    // Wenn der Aufruf aus dem Web-Admin kam, leiten wir direkt per HTTP-Redirect um (kein XML nötig!)
+    if (fromAdmin) {
+        return res.redirect(`/admin.html?mac=${macRaw}&hsid=${hsid}`);
+    }
+
+    // FÜR DAS TELEFON: Die Parameter müssen im XML explizit mit &amp; getrennt sein!
+    const cleanMac = encodeURIComponent(macRaw);
+    const cleanHs = encodeURIComponent(hsid);
+    const xmlRedirectUrl = `/info/weather_search?mac=${cleanMac}&amp;handsetid=${cleanHs}`;
 
     res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.header('Pragma', 'no-cache');
 
-    const xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Gespeichert</title><meta http-equiv="refresh" content="1; URL=${redirectUrl.replace(/&amp;/g, '&')}" /></head><body><p style="text-align:center;"><b>STADT GESPEICHERT!</b></p></body></html>`;
+    // Hier ist das entscheidende &amp; im String, das jetzt nicht mehr angefasst wird:
+    const xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Gespeichert</title><meta http-equiv="refresh" content="1; URL=${xmlRedirectUrl}" /></head><body><p style="text-align:center;"><b>STADT GESPEICHERT!</b></p></body></html>`;
 
     return res.send(xml);
 });
