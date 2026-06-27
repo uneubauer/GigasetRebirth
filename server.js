@@ -22,7 +22,9 @@ function saveConfig(config) {
     fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 4), 'utf8');
 }
 
+// =========================================================================
 // 1. IMAGE PROXY (Spritesheet zuschnitt für Ruhezustand)
+// =========================================================================
 app.get('/info/:icon.bmp', async (req, res) => {
     const iconName = req.params.icon.toLowerCase();
     const userAgent = req.headers['user-agent'] || '';
@@ -45,12 +47,18 @@ app.get('/info/:icon.bmp', async (req, res) => {
             .toFormat('bmp')
             .toBuffer();
 
-        res.set({ 'Content-Type': 'image/bmp', 'Content-Length': imageBuffer.length, 'Cache-Control': 'no-cache, no-store, must-revalidate' });
+        res.set({ 
+            'Content-Type': 'image/bmp', 
+            'Content-Length': imageBuffer.length, 
+            'Cache-Control': 'no-cache, no-store, must-revalidate' 
+        });
         res.send(imageBuffer);
     } catch (err) { res.sendStatus(500); }
 });
 
+// =========================================================================
 // 2. TELEFON-EINSTIEG & AUTODISCOVERY (request.do)
+// =========================================================================
 app.get('/info/request.do', (req, res) => {
     const ua = req.headers['user-agent'] || ''; const macRaw = req.query.mac; const hsid = req.query.handsetid;
     if (req.query.data) return res.redirect(`/info/${req.query.data}.bmp`);
@@ -85,34 +93,50 @@ app.get('/info/request.do', (req, res) => {
         if (changed) saveConfig(config);
     }
 
-    res.set('Content-Type', 'application/xhtml+xml; charset=UTF-8');
-    res.send(`<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org"><html xmlns="http://w3.org"><head><title>Menue</title></head><body><ul><li><a href="/info/weather_search?mac=${macRaw}&amp;handsetid=${hsid}">Wetter-Ort einstellen</a></li></ul></body></html>`);
+    // KORREKTUR: Reines application/xhtml+xml ohne Charset-Anhang, korrekte DTD-URL und valider Namensraum
+    res.set('Content-Type', 'application/xhtml+xml');
+    res.send(`<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org">
+<html xmlns="http://w3.org"><head><title>Menue</title></head><body><ul><li><a href="/info/weather_search?mac=${macRaw}&amp;handsetid=${hsid}">Wetter-Ort einstellen</a></li></ul></body></html>`);
 });
 
+// =========================================================================
 // 3. ORTSSUCHE & LISTENAUSWAHL
+// =========================================================================
 app.get('/info/weather_search', (req, res) => {
     const mac = req.query.mac || ''; const hsid = req.query.handsetid || ''; let cities = [];
     if (fs.existsSync(CITIES_PATH)) { try { cities = JSON.parse(fs.readFileSync(CITIES_PATH, 'utf8')).cities || []; } catch(e){} }
 
-    res.set('Content-Type', 'application/xhtml+xml; charset=UTF-8');
-    let html = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org"><html xmlns="http://w3.org"><head><title>Ort waehlen</title></head><body bgcolor="#ffffff"><p style="text-align:center; font-weight:bold; color:#ff9900;">Ort waehlen</p><ul>`;
+    // KORREKTUR: Reines application/xhtml+xml ohne Charset-Anhang, korrekte DTD-URL und valider Namensraum
+    res.set('Content-Type', 'application/xhtml+xml');
+    let html = `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org">
+<html xmlns="http://w3.org"><head><title>Ort waehlen</title></head><body bgcolor="#ffffff"><p style="text-align:center; font-weight:bold; color:#ff9900;">Ort waehlen</p><ul>`;
     cities.forEach(c => { html += `<li><a href="/info/weather_save?mac=${mac}&amp;handsetid=${hsid}&amp;city=${encodeURIComponent(c.name || 'Unbekannt')}">${c.name}</a></li>`; });
     html += `</ul><p style="text-align:center; font-size:small;"><a href="/info/request.do?mac=${mac}&amp;handsetid=${hsid}">Zurueck</a></p></body></html>`;
     res.send(html);
 });
 
+// =========================================================================
 // 4. SPEICHERN & HISTORY-BACK REFRESH
+// =========================================================================
 app.get('/info/weather_save', (req, res) => {
     const macRaw = req.query.mac; const hsid = req.query.handsetid; const city = req.query.city;
     if (macRaw && hsid) {
         const mac = macRaw.replace(/:/g, '').toUpperCase().trim(); let config = getConfig();
         if (config.gateways[mac] && config.gateways[mac].handsets[hsid]) { config.gateways[mac].handsets[hsid].city = city || "Unbekannt"; saveConfig(config); }
     }
-    res.set({ 'Content-Type': 'application/xhtml+xml; charset=UTF-8', 'Refresh': '1; url=prev' });
-    res.send(`<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org"><html xmlns="http://w3.org"><head><title>Gespeichert</title><meta http-equiv="refresh" content="1; URL=prev" /></head><body><p style="text-align:center; font-weight:bold; color:#2ecc71;">STADT GESPEICHERT!</p></body></html>`);
+    
+    // KORREKTUR: Reines application/xhtml+xml ohne Charset-Anhang, korrekte DTD-URL und valider Namensraum
+    res.set({ 'Content-Type': 'application/xhtml+xml', 'Refresh': '1; url=prev' });
+    res.send(`<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org">
+<html xmlns="http://w3.org"><head><title>Gespeichert</title><meta http-equiv="refresh" content="1; URL=prev" /></head><body><p style="text-align:center; font-weight:bold; color:#2ecc71;">STADT GESPEICHERT!</p></body></html>`);
 });
 
+// =========================================================================
 // 5. REST-API FÜR DAS KUNDENCENTER
+// =========================================================================
 app.get('/api/config', (req, res) => { res.json(getConfig()); });
 app.post('/api/save', (req, res) => {
     const { mac, hsid, city } = req.body; if (!mac || !hsid) return res.status(400).json({ error: 'Missing params' });
@@ -126,5 +150,5 @@ app.post('/api/save', (req, res) => {
 // Start-Routing für PC-Browser
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'admin.html')); });
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 8080; // Für Codespaces auf ungeschütztem Port 8080
 app.listen(PORT, () => { console.log(`Schlanker Gigaset Rebirth Container laeuft auf Port ${PORT}`); });
