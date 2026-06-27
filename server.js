@@ -1,9 +1,13 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const sharp = require('sharp');
+const morgan = require('morgan');
 
 const app = express();
+
+// Morgan für automatische Docker-Logs im 'dev'-Format
+app.use(morgan('dev'));
+
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
@@ -23,53 +27,35 @@ function saveConfig(config) {
 }
 
 // =========================================================================
-// 1. IMAGE PROXY (Spritesheet zuschnitt für Ruhezustand)
+// 1. TEXT-MENÜ: WIRD BEIM DIREKTEN KLICK AUF INFODIENSTE AUFGERUFEN
 // =========================================================================
-app.get('/info/:icon.bmp', async (req, res) => {
-    const iconName = req.params.icon.toLowerCase();
-    const userAgent = req.headers['user-agent'] || '';
-    let targetSize = userAgent.toLowerCase().includes('pro') || userAgent.toLowerCase().includes('n510') ? 128 : 32;
-    const sheetPath = path.join(__dirname, 'static', 'icons', '_spritesheet.png');
-    
-    if (!fs.existsSync(sheetPath)) return res.sendStatus(404);
-
-    try {
-        const size = 42; 
-        // Fallback-Koordinaten (z.B. 0,0), falls kein Begriff matcht
-        let col = 0, row = 0; 
-
-        if (iconName.includes('sun') || iconName.includes('clear')) { col = 1; row = 1; }
-        else if (iconName.includes('cloud')) { col = 3; row = 2; }
-        else if (iconName.includes('rain') || iconName.includes('shower')) { col = 2; row = 3; }
-        else if (iconName.includes('snow')) { col = 4; row = 0; }
-        else if (iconName.includes('thunder') || iconName.includes('bolt')) { col = 0; row = 1; }
-        else {
-            // OPTIONAL: Definiere hier abweichende Standard-Koordinaten für unbekannte Wetterlagen
-            col = 1; row = 1; // Standardmäßig z.B. Sonne/Clear
-        }
-
-        const imageBuffer = await sharp(sheetPath)
-            .extract({ left: col * size, top: row * size, width: size, height: size })
-            .resize(targetSize, targetSize, { kernel: 'bilinear' })
-            .toFormat('bmp')
-            .toBuffer();
-
-        res.set({ 
-            'Content-Type': 'image/bmp', 
-            'Content-Length': imageBuffer.length, 
-            'Cache-Control': 'no-cache, no-store, must-revalidate' 
-        });
-        res.send(imageBuffer);
-    } catch (err) { res.sendStatus(500); }
+app.get('/info/', (req, res) => {
+    return renderMainMenu(req, res);
 });
 
+app.get('/info/menu', (req, res) => {
+    return renderMainMenu(req, res);
+});
+
+function renderMainMenu(req, res) {
+    const macRaw = req.query.mac || ''; 
+    const hsid = req.query.handsetid || '';
+
+    res.set('Content-Type', 'application/xhtml+xml');
+    return res.send(`<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org">
+<html xmlns="http://w3.org"><head><title>Menue</title></head><body><ul><li><a href="/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}">Wetter-Ort einstellen</a></li></ul></body></html>`);
+}
+
 // =========================================================================
-// 2. TELEFON-EINSTIEG & AUTODISCOVERY (request.do)
+// 2. SCREENSAVER-EINSTIEG / WEATHER DATA (Rein textbasiert, ohne Bilder)
 // =========================================================================
 app.get('/info/request.do', (req, res) => {
-    const ua = req.headers['user-agent'] || ''; const macRaw = req.query.mac || ''; const hsid = req.query.handsetid || '';
-    if (req.query.data) return res.redirect(`/info/${req.query.data}.bmp`);
+    const ua = req.headers['user-agent'] || ''; 
+    const macRaw = req.query.mac || ''; 
+    const hsid = req.query.handsetid || '';
 
+    // Autodiscovery & Registrierung in der Config
     if (ua && macRaw && hsid) {
         const mac = macRaw.replace(/:/g, '').toUpperCase().trim();
         let config = getConfig(); if (!config.gateways) config.gateways = {};
@@ -100,10 +86,11 @@ app.get('/info/request.do', (req, res) => {
         if (changed) saveConfig(config);
     }
 
+    // Antwort für den Wetter-Screensaver (Purer Text/XHTML statt Bild)
     res.set('Content-Type', 'application/xhtml+xml');
-    res.send(`<?xml version="1.0" encoding="utf-8"?>
+    return res.send(`<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org">
-<html xmlns="http://w3.org"><head><title>Menue</title></head><body><ul><li><a href="/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}">Wetter-Ort einstellen</a></li></ul></body></html>`);
+<html xmlns="http://w3.org"><head><title>Wetter</title></head><body><p style="text-align:center;">Wetter geladen</p></body></html>`);
 });
 
 // =========================================================================
@@ -118,12 +105,12 @@ app.get('/info/weather_search', (req, res) => {
 <!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org">
 <html xmlns="http://w3.org"><head><title>Ort waehlen</title></head><body bgcolor="#ffffff"><p style="text-align:center; font-weight:bold; color:#ff9900;">Ort waehlen</p><ul>`;
     cities.forEach(c => { html += `<li><a href="/info/weather_save?mac=${encodeURIComponent(mac)}&amp;handsetid=${encodeURIComponent(hsid)}&amp;city=${encodeURIComponent(c.name || 'Unbekannt')}">${c.name}</a></li>`; });
-    html += `</ul><p style="text-align:center; font-size:small;"><a href="/info/request.do?mac=${encodeURIComponent(mac)}&amp;handsetid=${encodeURIComponent(hsid)}">Zurueck</a></p></body></html>`;
+    html += `</ul><p style="text-align:center; font-size:small;"><a href="/info/menu?mac=${encodeURIComponent(mac)}&amp;handsetid=${encodeURIComponent(hsid)}">Zurueck</a></p></body></html>`;
     res.send(html);
 });
 
 // =========================================================================
-// 4. SPEICHERN & KORREKTER REFRESH
+// 4. SPEICHERN & REFRESH (Zurück zur Ortssuche)
 // =========================================================================
 app.get('/info/weather_save', (req, res) => {
     const macRaw = req.query.mac || ''; const hsid = req.query.handsetid || ''; const city = req.query.city;
@@ -132,12 +119,11 @@ app.get('/info/weather_save', (req, res) => {
         if (config.gateways[mac] && config.gateways[mac].handsets[hsid]) { config.gateways[mac].handsets[hsid].city = city || "Unbekannt"; saveConfig(config); }
     }
     
-    // Generiere saubere Rücksprung-URL statt dem unzuverlässigen 'url=prev'
     const redirectUrl = `/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}`;
 
     res.set({ 
         'Content-Type': 'application/xhtml+xml', 
-        'Refresh': `1; url=${redirectUrl.replace(/&amp;/g, '&')}` // HTTP-Header verlangt echtes &
+        'Refresh': `1; url=${redirectUrl.replace(/&amp;/g, '&')}`
     });
     res.send(`<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org">
