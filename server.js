@@ -27,29 +27,16 @@ function saveConfig(config) {
 }
 
 // =========================================================================
-// 1. TEXT-MENÜ: WIRD BEIM DIREKTEN KLICK AUF INFODIENSTE AUFGERUFEN
+// 1. TELEFON-EINSTIEG: DIE VOM MOBILTEIL GEFORDERTE menu.jsp
 // =========================================================================
-app.get('/info/', (req, res) => {
-    return renderMainMenu(req, res);
-});
-
-app.get('/info/menu', (req, res) => {
-    return renderMainMenu(req, res);
-});
-
-function renderMainMenu(req, res) {
+app.get('/info/menu.jsp', (req, res) => {
     const macRaw = req.query.mac || ''; 
     const hsid = req.query.handsetid || '';
 
-    // WICHTIG: Kein Charset im Content-Type Header! Nur reines application/xhtml+xml
     res.set('Content-Type', 'application/xhtml+xml');
-    
     return res.send(`<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://www.wapforum.org/DTD/xhtml-mobile10.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
-<head>
-    <title>Menue</title>
-</head>
+<head><title>Menue</title></head>
 <body>
     <div>
         <p style="text-align:center; font-weight:bold; color:#ff9900;">Infodienste</p>
@@ -59,10 +46,14 @@ function renderMainMenu(req, res) {
     </div>
 </body>
 </html>`);
-}
+});
+
+// Fallback für die alten Pfade (zur Sicherheit)
+app.get('/info/', (req, res) => { res.redirect(`/info/menu.jsp?mac=${req.query.mac || ''}&handsetid=${req.query.handsetid || ''}`); });
+app.get('/info/menu', (req, res) => { res.redirect(`/info/menu.jsp?mac=${req.query.mac || ''}&handsetid=${req.query.handsetid || ''}`); });
 
 // =========================================================================
-// 2. SCREENSAVER-EINSTIEG / WEATHER DATA (Rein textbasiert)
+// 2. SCREENSAVER-EINSTIEG / WEATHER DATA (request.do)
 // =========================================================================
 app.get('/info/request.do', (req, res) => {
     const ua = req.headers['user-agent'] || ''; 
@@ -100,17 +91,15 @@ app.get('/info/request.do', (req, res) => {
         if (changed) saveConfig(config);
     }
 
-    // Antwort für den Wetter-Screensaver valide formatiert
+    // Antwort für den Wetter-Screensaver (valides XML)
     res.set('Content-Type', 'application/xhtml+xml');
     return res.send(`<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://www.wapforum.org/DTD/xhtml-mobile10.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
-<head>
-    <title>Wetter</title>
-</head>
+<head><title>Wetter</title></head>
 <body>
     <div>
-        <p style="text-align:center;">Wetter geladen</p>
+        <p style="text-align:center; font-weight:bold;">Mitteldachstetten</p>
+        <p style="text-align:center;">18 Grad - Heiter</p>
     </div>
 </body>
 </html>`);
@@ -125,10 +114,10 @@ app.get('/info/weather_search', (req, res) => {
 
     res.set('Content-Type', 'application/xhtml+xml');
     let html = `<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org">
-<html xmlns="http://w3.org"><head><title>Ort waehlen</title></head><body bgcolor="#ffffff"><p style="text-align:center; font-weight:bold; color:#ff9900;">Ort waehlen</p><ul>`;
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Ort waehlen</title></head><body bgcolor="#ffffff"><p style="text-align:center; font-weight:bold; color:#ff9900;">Ort waehlen</p><ul>`;
     cities.forEach(c => { html += `<li><a href="/info/weather_save?mac=${encodeURIComponent(mac)}&amp;handsetid=${encodeURIComponent(hsid)}&amp;city=${encodeURIComponent(c.name || 'Unbekannt')}">${c.name}</a></li>`; });
-    html += `</ul><p style="text-align:center; font-size:small;"><a href="/info/menu?mac=${encodeURIComponent(mac)}&amp;handsetid=${encodeURIComponent(hsid)}">Zurueck</a></p></body></html>`;
+    // Zurück führt jetzt sauber zur menu.jsp
+    html += `</ul><p style="text-align:center; font-size:small;"><a href="/info/menu.jsp?mac=${encodeURIComponent(mac)}&amp;handsetid=${encodeURIComponent(hsid)}">Zurueck</a></p></body></html>`;
     res.send(html);
 });
 
@@ -149,8 +138,7 @@ app.get('/info/weather_save', (req, res) => {
         'Refresh': `1; url=${redirectUrl.replace(/&amp;/g, '&')}`
     });
     res.send(`<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org">
-<html xmlns="http://w3.org"><head><title>Gespeichert</title><meta http-equiv="refresh" content="1; URL=${redirectUrl}" /></head><body><p style="text-align:center; font-weight:bold; color:#2ecc71;">STADT GESPEICHERT!</p></body></html>`);
+<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Gespeichert</title><meta http-equiv="refresh" content="1; URL=${redirectUrl}" /></head><body><p style="text-align:center; font-weight:bold; color:#2ecc71;">STADT GESPEICHERT!</p></body></html>`);
 });
 
 // =========================================================================
