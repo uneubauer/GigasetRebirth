@@ -104,19 +104,42 @@ app.get('/info/request.do', (req, res) => {
 // =========================================================================
 // 3. ORTSSUCHE & LISTENAUSWAHL
 // =========================================================================
+// =========================================================================
+// 3. ORTSSUCHE & LISTENAUSWAHL (Exakte Übersetzung der JSP)
+// =========================================================================
 app.get('/info/weather_search', (req, res) => {
-    const mac = req.query.mac || ''; const hsid = req.query.handsetid || ''; let cities = [];
-    if (fs.existsSync(CITIES_PATH)) { try { cities = JSON.parse(fs.readFileSync(CITIES_PATH, 'utf8')).cities || []; } catch(e){} }
+    const mac = req.query.mac || ''; 
+    const hsid = req.query.handsetid || ''; 
+    
+    let cities = [];
+    if (fs.existsSync(CITIES_PATH)) { 
+        try { 
+            cities = JSON.parse(fs.readFileSync(CITIES_PATH, 'utf8')).cities || []; 
+        } catch(e) {
+            console.error("Fehler beim Lesen der cities.json:", e);
+        } 
+    }
 
-    res.set('Content-Type', 'application/xhtml+xml');
-    let html = `<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml"><head><title>Ort waehlen</title></head><body bgcolor="#ffffff"><p style="text-align:center; font-weight:bold; color:#ff9900;">Ort waehlen</p><ul>`;
-    cities.forEach(c => { html += `<li><a href="/info/weather_save?mac=${encodeURIComponent(mac)}&amp;handsetid=${encodeURIComponent(hsid)}&amp;city=${encodeURIComponent(c.name || 'Unbekannt')}">${c.name}</a></li>`; });
-    // Zurück führt jetzt sauber zur menu.jsp
-    html += `</ul><p style="text-align:center; font-size:small;"><a href="/info/menu.jsp?mac=${encodeURIComponent(mac)}&amp;handsetid=${encodeURIComponent(hsid)}">Zurueck</a></p></body></html>`;
-    res.send(html);
+    // Header sauber wie beim Tomcat setzen
+    res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.header('Pragma', 'no-cache');
+
+    // 1. XML-Kopf und DTD (Exakt wie in der gelieferten JSP)
+    let xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtml-mobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Ort waehlen</title></head><body><p><b>Ort waehlen</b></p><ul>`;
+    
+    // 2. Dynamische Städteliste einbauen (Zielt auf die weather_save.jsp Route)
+    cities.forEach(c => { 
+        const cityName = c.name || 'Unbekannt';
+        xml += `<li><a href="/info/weather_save.jsp?mac=${encodeURIComponent(mac)}&amp;handsetid=${encodeURIComponent(hsid)}&amp;city=${encodeURIComponent(cityName)}">${cityName}</a></li>`; 
+    });
+    
+    // 3. Schließen der Tags
+    xml += `</ul></body></html>`;
+
+    // Alles ohne Zeilenumbrüche an das Telefon jagen
+    return res.send(xml);
 });
-
 // =========================================================================
 // 4. SPEICHERN & REFRESH (Zurück zur Ortssuche)
 // =========================================================================
