@@ -16,7 +16,34 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const CONFIG_PATH = path.join(__dirname, 'WEB-INF', 'config.json');
 const CITIES_PATH = path.join(__dirname, 'WEB-INF', 'cities.json');
+// Hilfsfunktion zum Normalisieren der MAC (Analog zu normMac in der JSP)
+function normMac(mac) {
+    if (!mac) return "UNKNOWN";
+    return mac.replace(/[:\-]/g, '').toUpperCase().trim();
+}
 
+// Wetterkonditionen übersetzen (Analog zu clean(t) in der JSP)
+function translateCondition(t) {
+    if (!t || !t.trim()) return "Heiter";
+    const r = t.toLowerCase();
+    if (r.includes("thunder") || r.includes("bolt")) return "Gewitter";
+    if (r.includes("rain") || r.includes("shower")) return "Regen";
+    if (r.includes("drizzle")) return "Niesel";
+    if (r.includes("snow")) return "Schnee";
+    if (r.includes("clear") || r.includes("sun")) return "Sonnig";
+    if (r.includes("cloud")) return "Wolkig";
+    if (r.includes("fog") || r.includes("mist")) return "Nebel";
+    if (r.includes("wind")) return "Windig";
+    if (r.includes("dry")) return "Heiter";
+    return "Heiter";
+}
+
+// Deutschen Wochentag ermitteln
+function getGermanDayLabel(dayIndex, offset) {
+    if (offset === 0) return "Heute";
+    const days = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+    return days[dayIndex];
+}
 function getConfig() {
     if (!fs.existsSync(CONFIG_PATH)) return { gateways: {} };
     try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch (e) { return { gateways: {} }; }
@@ -51,20 +78,21 @@ app.get('/info/menu', (req, res) => { res.redirect(`/info/menu.jsp?mac=${req.que
 // =========================================================================
 // 2. SCREENSAVER-EINSTIEG / WEATHER DATA (request.do)
 // =========================================================================
+// =========================================================================
+// 2. SCREENSAVER / WEATHER DATA (request.do) - Vollständige JSP-Übersetzung
+// =========================================================================
 app.get('/info/request.do', (req, res) => {
     const ua = req.headers['user-agent'] || ''; 
     const macRaw = req.query.mac || ''; 
-    const hsid = req.query.handsetid || '';
+    const hsid = req.query.handsetid || '1';
+    const macClean = normMac(macRaw);
 
-    // Autodiscovery & Registrierung in der Config
+    // --- AUTODISCOVERY START (Registrierung in config.json wie gehabt) ---
     if (ua && macRaw && hsid) {
-        const mac = macRaw.replace(/:/g, '').toUpperCase().trim();
         let config = getConfig(); if (!config.gateways) config.gateways = {};
-
         const parts = ua.replace(/_/g, ' ').split('/');
         let baseModel = (parts && parts[0]) ? parts[0].replace('Gigaset ', '').trim() : "GO-Box / N510";
         let fwVersion = "---", hsModel = "Mobilteil";
-
         if (parts && parts.length > 1) {
             let secondPart = parts[1].replace(/\(/g, '').replace(/\)/g, '');
             if (secondPart.includes(';')) {
@@ -72,33 +100,100 @@ app.get('/info/request.do', (req, res) => {
                 for (let sub of subParts) { if (sub.includes('HS=')) hsModel = sub.replace('HS=', '').trim(); }
             } else { fwVersion = secondPart.trim(); }
         }
-
         let changed = false;
-        if (!config.gateways[mac]) { config.gateways[mac] = { handsets: {} }; changed = true; }
-        if (!config.gateways[mac].handsets[hsid]) {
-            config.gateways[mac].handsets[hsid] = { mode: "weather", city: "Mitteldachstetten", box_model: baseModel, box_fw: fwVersion, hs_model: hsModel };
+        if (!config.gateways[macClean]) { config.gateways[macClean] = { handsets: {} }; changed = true; }
+        if (!config.gateways[macClean].handsets[hsid]) {
+            config.gateways[macClean].handsets[hsid] = { mode: "weather", city: "Mitteldachstetten", box_model: baseModel, box_fw: fwVersion, hs_model: hsModel };
             changed = true;
-        } else {
-            let hs = config.gateways[mac].handsets[hsid];
-            if (hs.box_fw !== fwVersion || hs.box_model !== baseModel || hs.hs_model !== hsModel) {
-                hs.box_model = baseModel; hs.box_fw = fwVersion; hs.hs_model = hsModel; changed = true;
-            }
         }
         if (changed) saveConfig(config);
     }
+    // --- AUTODISCOVERY ENDE ---
 
-    // Antwort für den Wetter-Screensaver (valides XML)
-    res.set('Content-Type', 'application/xhtml+xml');
-    return res.send(`<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head><title>Wetter</title></head>
-<body>
-    <div>
-        <p style="text-align:center; font-weight:bold;">Mitteldachstetten</p>
-        <p style="text-align:center;">18 Grad - Heiter</p>
-    </div>
-</body>
-</html>`);
+    // Standard-Stadt falls nichts gefunden wird
+    let cityName = "WETTER";
+    let weatherArray = null;
+
+    try {
+        // 1. Stadt aus Haupt-Config holen
+        let config = getConfig();
+        if (config.gateways && config.gateways[macClean] && config.gateways[macClean].handsets[hsid]) {
+            cityName = config.gateways[macClean].handsets[hsid].city || "WETTER";
+        }
+
+        // 2. Wetterdaten aus der spezifischen cache_[MAC].json lesen
+        const cachePath = path.join(__dirname, 'WEB-INF', `cache_${macClean}.json`);
+        if (fs.existsSync(cachePath)) {
+            const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+            if (cacheData.handsets) {
+                const firstKey = Object.keys(cacheData.handsets)[0];
+                if (firstKey && cacheData.handsets[firstKey]) {
+                    weatherArray = cacheData.handsets[firstKey].weather || null;
+                    cityName = cacheData.handsets[firstKey].city || cityName;
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Fehler beim Verarbeiten des Wettercaches:", e);
+    }
+
+    // Stadt-Namen für das Display umformatieren (Umlaute raus, Uppercase)
+    const displayCity = cityName.replace(/ü/g, "UE").replace(/ä/g, "AE").replace(/ö/g, "OE").replace(/ß/g, "SS").toUpperCase();
+
+    // Headers strikt setzen (Wichtig: OMA XHTML 1.2 Doctype Match)
+    res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.header('Pragma', 'no-cache');
+
+    // XML Start-Skelett (Absolute Zeile 1, Byte 0)
+    let xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${displayCity}</title></head><body bgcolor="#ffffff">`;
+
+    if (weatherArray && weatherArray.length > 0) {
+        const now = new Date();
+        
+        for (let d = 0; d < 3; d++) {
+            const targetDate = new Date(now);
+            targetDate.setDate(now.getDate() + d);
+            
+            // Format YYYY-MM-DD
+            const targetStr = targetDate.toISOString().split('T')[0];
+            
+            let dayEntry = null;
+            let nightEntry = null;
+
+            // Einträge für Mittag und Nacht filtern
+            for (let i = 0; i < weatherArray.length; i++) {
+                const e = weatherArray[i];
+                const ts = e.timestamp || '';
+                if (ts.startsWith(targetStr)) {
+                    if (ts.includes("T12:00")) dayEntry = e;
+                    if (ts.includes("T03:00")) nightEntry = e;
+                }
+            }
+
+            // Fallback falls kein exakter Mittagswert da ist
+            if (!dayEntry) {
+                dayEntry = weatherArray.find(e => (e.timestamp || '').startsWith(targetStr)) || null;
+            }
+
+            if (dayEntry) {
+                const tD = Math.round(dayEntry.temperature || 0);
+                const tN = nightEntry ? Math.round(nightEntry.temperature || (tD - 5)) : (tD - 5);
+                const cond = translateCondition(dayEntry.condition);
+                const label = getGermanDayLabel(targetDate.getDay(), d);
+
+                xml += `<p style="text-align:center;">${label}<br/>${cond}&nbsp;${tD}°C/${tN}°C</p>`;
+            }
+        }
+    } else {
+        // Fallback falls der Cache (noch) leer ist
+        xml += `<p style="text-align:center;">Lade Daten...<br/>Bitte warten</p>`;
+    }
+
+    xml += `</body></html>`;
+
+    // Komplett flachgedrückt ohne störende Absätze absenden
+    return res.send(xml);
 });
 
 // =========================================================================
