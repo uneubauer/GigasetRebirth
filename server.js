@@ -41,14 +41,28 @@ function renderMainMenu(req, res) {
     const macRaw = req.query.mac || ''; 
     const hsid = req.query.handsetid || '';
 
+    // WICHTIG: Kein Charset im Content-Type Header! Nur reines application/xhtml+xml
     res.set('Content-Type', 'application/xhtml+xml');
+    
     return res.send(`<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org">
-<html xmlns="http://w3.org"><head><title>Menue</title></head><body><ul><li><a href="/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}">Wetter-Ort einstellen</a></li></ul></body></html>`);
+<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://www.wapforum.org/DTD/xhtml-mobile10.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>Menue</title>
+</head>
+<body>
+    <div>
+        <p style="text-align:center; font-weight:bold; color:#ff9900;">Infodienste</p>
+        <ul>
+            <li><a href="/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}">Wetter-Ort einstellen</a></li>
+        </ul>
+    </div>
+</body>
+</html>`);
 }
 
 // =========================================================================
-// 2. SCREENSAVER-EINSTIEG / WEATHER DATA (Rein textbasiert, ohne Bilder)
+// 2. SCREENSAVER-EINSTIEG / WEATHER DATA (Rein textbasiert)
 // =========================================================================
 app.get('/info/request.do', (req, res) => {
     const ua = req.headers['user-agent'] || ''; 
@@ -86,11 +100,20 @@ app.get('/info/request.do', (req, res) => {
         if (changed) saveConfig(config);
     }
 
-    // Antwort für den Wetter-Screensaver (Purer Text/XHTML statt Bild)
+    // Antwort für den Wetter-Screensaver valide formatiert
     res.set('Content-Type', 'application/xhtml+xml');
     return res.send(`<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://wapforum.org">
-<html xmlns="http://w3.org"><head><title>Wetter</title></head><body><p style="text-align:center;">Wetter geladen</p></body></html>`);
+<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.0//EN" "http://www.wapforum.org/DTD/xhtml-mobile10.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>Wetter</title>
+</head>
+<body>
+    <div>
+        <p style="text-align:center;">Wetter geladen</p>
+    </div>
+</body>
+</html>`);
 });
 
 // =========================================================================
