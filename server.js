@@ -33,19 +33,15 @@ app.get('/info/menu.jsp', (req, res) => {
     const macRaw = req.query.mac || ''; 
     const hsid = req.query.handsetid || '';
 
-    res.set('Content-Type', 'application/xhtml+xml');
-    return res.send(`<?xml version="1.0" encoding="utf-8"?>
-<html xmlns="http://www.w3.org/1999/xhtml">
-<head><title>Menue</title></head>
-<body>
-    <div>
-        <p style="text-align:center; font-weight:bold; color:#ff9900;">Infodienste</p>
-        <ul>
-            <li><a href="/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}">Wetter-Ort einstellen</a></li>
-        </ul>
-    </div>
-</body>
-</html>`);
+    // Header exakt wie beim Tomcat-Server setzen
+    res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.header('Pragma', 'no-cache');
+
+    // WICHTIG: Exakt die DOCTYPE-Zeile aus der JSP, komplett einzeilig ohne Leerzeichen am Anfang!
+    const xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><body><ul><li><a href="/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}">Wetter</a></li><li><a href="#">Nachrichten</a></li><li><a href="#">Horoskop</a></li></ul></body></html>`;
+
+    return res.send(xml);
 });
 
 // Fallback für die alten Pfade (zur Sicherheit)
