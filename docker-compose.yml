@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: gigaset-wetter-container
     ports:
-      - "80:80" # Mappt Port 80 deines Heimservers auf Port 80 im Container
+      - "8100:80" # Mappt Port 80 deines Heimservers auf Port 80 im Container
     environment:
       - PORT=80
     volumes:
