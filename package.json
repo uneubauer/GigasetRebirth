@@ -1,0 +1,19 @@
+{
+  "name": "gigaset-server-rebirth",
+  "version": "1.0.0",
+  "description": "Schlanker Gigaset Info-Center Server fuer Docker und Codespaces",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "docker:build": "docker build -t gigaset-server .",
+    "docker:run": "docker run -d -p 80:80 --name gigaset-wetter -v $(pwd)/WEB-INF:/app/WEB-INF --restart always gigaset-server"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "sharp": "^0.33.4"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "license": "MIT"
+}

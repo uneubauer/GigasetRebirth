@@ -1,0 +1,29 @@
+{
+    "name": "Gigaset Rebirth Developer Workspace",
+    "image": "://microsoft.com",
+    
+    // Installiert die Docker- und GitHub-Erweiterungen direkt in deinem Cloud-Codespace
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-azuretools.isc-dhcp-server",
+                "ms-azuretools.vscode-docker",
+                "eamodio.gitlens",
+                "esbenp.prettier-vscode",
+                "github.vscode-pull-request-github"
+            ]
+        }
+    },
+
+    // Führt nach dem Erstellen des Codespaces automatisch den npm-Install aus
+    "postCreateCommand": "npm install",
+
+    // Schaltet den Web-Port 80 im Codespace frei, damit du das Kundencenter testen kannst
+    "forwardPorts":,
+    "portsAttributes": {
+        "80": {
+            "label": "Gigaset WebUI Kundencenter",
+            "onAutoForward": "openPreview"
+        }
+    }
+}

@@ -1,0 +1,39 @@
+{
+     "cities": [
+    {
+      "name": "Mitteldachstetten",
+      "lat": "49.4170",
+      "lon": "10.4243"
+    },
+    {
+      "name": "Ansbach",
+      "lat": "49.3004",
+      "lon": "10.5719"
+    },
+    {
+      "name": "Nuernberg",
+      "lat": "49.4521",
+      "lon": "11.0767"
+    },
+    {
+      "name": "Bad Windsheim",
+      "lat": "49.5027",
+      "lon": "10.4160"
+    },
+    {
+      "name": "Rothenburg ob der Tauber",
+      "lat": "49.3783",
+      "lon": "10.1797"
+    },
+    {
+      "name": "Wuerzburg",
+      "lat": "49.7913",
+      "lon": "9.9534"
+    },
+    {
+      "name": "Muenchen",
+      "lat": "48.1374",
+      "lon": "11.5755"
+    }
+  ]
+}

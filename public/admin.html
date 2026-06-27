@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Gigaset - Kundencenter</title>
+    <style>
+        :root { --gigaset-orange: #ff9900; --gigaset-gray: #f9f9f9; --border-light: #e0e0e0; --text-main: #333; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: white; margin: 0; color: var(--text-main); display: flex; height: 100vh; }
+        .sidebar { width: 260px; border-right: 1px solid var(--border-light); padding: 20px; background: var(--gigaset-gray); overflow-y: auto; }
+        .sidebar.hidden { display: none; }
+        .device-link { padding: 12px 10px; margin-bottom: 5px; border-radius: 5px; cursor: pointer; border: 1px solid transparent; border-bottom: 1px solid #eee; }
+        .device-link.active { background: white; border-color: var(--border-light); font-weight: bold; }
+        .container { flex: 1; padding: 60px; overflow-y: auto; text-align: center; }
+        .header-text { max-width: 600px; margin: 0 auto 50px; font-size: 0.9em; line-height: 1.6; }
+        h1 { font-weight: 400; font-size: 2em; margin-bottom: 10px; }
+        .orange-line { width: 60px; height: 3px; background: var(--gigaset-orange); margin: 0 auto 30px; }
+        .grid { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-top: 40px; text-align: left; }
+        .tile { background: var(--gigaset-gray); border: 1px solid var(--border-light); border-radius: 10px; width: 220px; height: 200px; padding: 20px; cursor: pointer; position: relative; display: flex; flex-direction: column; justify-content: flex-end; }
+        .tile.active { border-color: var(--gigaset-orange); background: white; }
+        .main-icon { font-size: 40px; margin-bottom: 15px; }
+        .tile-title { font-size: 1.5em; margin-bottom: 5px; }
+        .tile-desc { color: var(--gigaset-orange); font-size: 0.9em; }
+        .search-box { background: var(--gigaset-gray); border: 1px solid var(--border-light); border-radius: 10px; width: 100%; max-width: 500px; margin: 30px auto; padding: 15px; display: flex; align-items: center; justify-content: space-between; }
+        .search-box input { border: none; background: transparent; font-size: 1em; width: 80%; outline: none; }
+        .btn-save { background: var(--gigaset-orange); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar" id="sidebar">
+        <h3 style="color: #666;">Mobilteile</h3>
+        <div id="device-list"></div>
+    </div>
+
+    <div class="container">
+        <div id="config-panel" style="display:none;">
+            <div class="header-text">Willkommen – Die Konfigurationskarte Ihres Gigaset IP-Telefons.</div>
+            <h1 id="panel-title">Konfiguration</h1>
+            <div class="orange-line"></div>
+            <div class="grid">
+                <div class="tile active">
+                    <div class="main-icon">🌦️</div>
+                    <div class="tile-title">Wetter</div>
+                    <div class="tile-desc">Screensaver-Ort einstellen</div>
+                </div>
+            </div>
+            <div class="search-box">
+                <input type="text" id="city-input" placeholder="Stadtname eingeben...">
+                <button class="btn-save" onclick="saveCity()">Speichern</button>
+            </div>
+        </div>
+        <div id="empty-panel">
+            <h1>Gigaset Admin Zentrale</h1>
+            <div class="orange-line"></div>
+            <p>Bitte wählen Sie links ein Mobilteil aus.</p>
+        </div>
+    </div>
+
+    <script>
+        // Liest die URL-Parameter direkt im Browser ein
+        const urlParams = new URLSearchParams(window.location.search);
+        let currentMac = (urlParams.get('mac') || '').replace(/:/g, '').toUpperCase().trim();
+        let currentHs = urlParams.get('hsid') || '';
+        
+        // Single-Device-Modus erzwingen, falls Parameter übergeben wurden (außer deine PC-Test-ID)
+        const isSingle = (currentMac && currentHs && currentHs !== '037E727D2E');
+        if (isSingle) document.getElementById('sidebar').classList.add('hidden');
+
+        async function loadConfig() {
+            const res = await fetch('/api/config');
+            const data = await res.json();
+            const list = document.getElementById('device-list');
+            list.innerHTML = '';
+            
+            for (let mac in data.gateways) {
+                let handsets = data.gateways[mac].handsets;
+                for (let id in handsets) {
+                    let hs = handsets[id];
+                    let active = (mac === currentMac && id === currentHs);
+                    
+                    let html = `<div class="device-link ${active ? 'active' : ''}" onclick="selectDevice('${mac}','${id}')">
+                        <strong>${hs.hs_model || 'Mobilteil'}</strong>
+                        <div style="color:var(--gigaset-orange); font-size:0.85em; margin:2px 0;">ID: ${id}</div>
+                        <div style="font-size:0.75em; color:#888;">Basis: ${hs.box_model}<br>FW: ${hs.box_fw}</div>
+                    </div>`;
+                    list.innerHTML += html;
+                    
+                    if (active || (isSingle && mac === currentMac && id === currentHs)) {
+                        loadDevicePanel(hs);
+                    }
+                }
+            }
+        }
+
+        function selectDevice(mac, hs) { 
+            window.location.href = `/admin.html?mac=${mac}&hsid=${hs}`; 
+        }
+        
+        function loadDevicePanel(hs) {
+            document.getElementById('empty-panel').style.display = 'none';
+            document.getElementById('config-panel').style.display = 'block';
+            document.getElementById('panel-title').innerText = "Konfiguration für " + (hs.hs_model || 'Ihr Telefon');
+            document.getElementById('city-input').value = hs.city || '';
+        }
+
+        async function saveCity() {
+            const city = document.getElementById('city-input').value;
+            const res = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mac: currentMac, hsid: currentHs, city: city })
+            });
+            if (res.ok) alert('Stadt erfolgreich aktualisiert!');
+        }
+
+        loadConfig();
+    </script>
+</body>
+</html>
