@@ -196,9 +196,7 @@ app.get('/info/request.do', (req, res) => {
     return res.send(xml);
 });
 
-// =========================================================================
-// 3. ORTSSUCHE & LISTENAUSWAHL
-// =========================================================================
+
 // =========================================================================
 // 3. ORTSSUCHE & LISTENAUSWAHL (Exakte Übersetzung der JSP)
 // =========================================================================
@@ -235,12 +233,7 @@ app.get('/info/weather_search', (req, res) => {
     // Alles ohne Zeilenumbrüche an das Telefon jagen
     return res.send(xml);
 });
-// =========================================================================
-// 4. SPEICHERN & REFRESH (Zurück zur Ortssuche)
-// =========================================================================
-// =========================================================================
-// 4. SPEICHERN & REFRESH (Jetzt als .jsp mit Schutz vor doppelter MAC)
-// =========================================================================
+
 // =========================================================================
 // 4. SPEICHERN & REFRESH (Sicher gegen Express-Arrays bei doppelten Querys)
 // =========================================================================
@@ -286,7 +279,79 @@ app.post('/api/save', (req, res) => {
     }
     res.status(404).json({ error: 'Device not found' });
 });
+// =========================================================================
+// 6. WETTER-UPDATE DATA FETCH (BrightSky API / DWD Übersetzung)
+// =========================================================================
+app.get('/info/weather_update', async (req, res) => {
+    try {
+        const config = getConfig();
+        if (!config.gateways) return res.status(400).json({ error: "Keine Gateways in config.json" });
 
+        const today = new Date().toISOString().split('T')[0];
+        
+        // End-Datum berechnen (heute + 3 Tage)
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + 3);
+        const end = endDate.toISOString().split('T')[0];
+
+        let updates = 0;
+
+        // Alle Basisstationen durchgehen
+        for (const mac of Object.keys(config.gateways)) {
+            const safeMac = mac.replace(/:/g, '').toUpperCase().trim();
+            const handsets = config.gateways[mac].handsets || {};
+
+            const cacheRoot = { handsets: {}, updated: new Date().toISOString() };
+            let hasDataForBase = false;
+
+            // Jedes Mobilteil dieser Basis abfragen
+            for (const hsid of Object.keys(handsets)) {
+                const hs = handsets[hsid];
+
+                // Koordinaten direkt aus dem Mobilteil-Objekt ziehen (Fallback auf deine Defaults)
+                const lat = hs.lat || "49.4";
+                const lon = hs.lon || "10.4";
+                const city = hs.city || "Wetter";
+
+                // BrightSky API-URL zusammenbauen
+                const apiUrl = `https://api.brightsky.dev/weather?lat=${lat}&lon=${lon}&date=${today}&last_date=${end}&units=dwd`;
+
+                try {
+                    const response = await fetch(apiUrl);
+                    if (response.status === 200) {
+                        const weatherData = await response.json();
+
+                        // Cache-Struktur exakt wie in deiner JSP aufbauen
+                        cacheRoot.handsets[hsid] = {
+                            city: city,
+                            lat: lat,
+                            lon: lon,
+                            weather: weatherData.weather || []
+                        };
+
+                        hasDataForBase = true;
+                        updates++;
+                    }
+                } catch (apiErr) {
+                    console.error(`Fehler beim BrightSky-Abruf für MAC ${safeMac}, HS ${hsid}:`, apiErr.message);
+                }
+            }
+
+            // Cache-Datei für diese Basis schreiben, wenn mindestens ein Mobilteil erfolgreich war
+            if (hasDataForBase) {
+                const cacheFilePath = path.join(__dirname, 'WEB-INF', `cache_${safeMac}.json`);
+                fs.writeFileSync(cacheFilePath, JSON.stringify(cacheRoot, null, 2), 'utf8');
+            }
+        }
+
+        // Response exakt wie bei der JSP ("UPDATED: X")
+        return res.send(`UPDATED: ${updates}`);
+
+    } catch (error) {
+        console.error("Schwerwiegender Fehler im weather_update:", error);
+        return res.status(500).send("UPDATED: 0 (Error)");
+    }
+});
 // Start-Routing für PC-Browser
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'admin.html')); });
 
