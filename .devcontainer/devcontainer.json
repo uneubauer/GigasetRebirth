@@ -1,6 +1,6 @@
 {
     "name": "Gigaset Rebirth Developer Workspace",
-    "image": "://microsoft.com",
+   "image": "mcr.microsoft.com/devcontainers/javascript-node:1-18-bullseye" ,
     
     // Installiert die Docker- und GitHub-Erweiterungen direkt in deinem Cloud-Codespace
     "customizations": {
