@@ -242,32 +242,36 @@ app.get('/info/request.do', (req, res) => {
 // NEU: GIGASET SPRITESHEET PROXY (Wandelt PNG-Kacheln in .fnt um)
 // =========================================================================
 app.get('/proxy/image.do', async (req, res) => {
-    // Spalte (0 bis 4) und Zeile (0 bis 3) aus der URL holen
     const col = parseInt(req.query.col) || 0;
     const row = parseInt(req.query.row) || 0;
-
     const COLS_TOTAL = 5;
     const ROWS_TOTAL = 4;
     
-    // Da das Bild jetzt im GitHub-Repo im public-Ordner liegt:
     const spritesheetPath = path.join(__dirname, 'public', '_spritesheet.png');
 
     try {
-        // 1. Spritesheet einlesen
-        const sheet = await Jimp.read(spritesheetPath);
+        // --- KORREKTUR FÜR JIMP V1+ UND ÄLTER ---
+        let sheet;
+        if (typeof Jimp.read === 'function') {
+            sheet = await Jimp.read(spritesheetPath); // Alte API
+        } else if (Jimp.Jimp && typeof Jimp.Jimp.read === 'function') {
+            sheet = await Jimp.Jimp.read(spritesheetPath); // Neue API (v1+)
+        } else {
+            // Fallback, falls Jimp direkt als Funktion importiert wurde (ESM-Style)
+            sheet = await Jimp({ src: spritesheetPath });
+        }
 
-        // 2. Kachel-Größe berechnen
+        // Ab hier bleibt der Code absolut identisch:
         const tileWidth = Math.floor(sheet.bitmap.width / COLS_TOTAL);
         const tileHeight = Math.floor(sheet.bitmap.height / ROWS_TOTAL);
 
         const startX = col * tileWidth;
         const startY = row * tileHeight;
-        
         const w = 16;
         const h = 16;
         
-        // 3. Ausschnitt isolieren und auf 16x16 verkleinern
         const icon = sheet.clone().crop(startX, startY, tileWidth, tileHeight).resize(w, h);
+        // ... (Rest des Codes bleibt gleich)
 
         // 4. Gigaset-Header generieren
         const header = Buffer.alloc(4);
