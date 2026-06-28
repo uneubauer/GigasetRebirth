@@ -1,6 +1,6 @@
 const express = require('express');
 const fs = require('fs');
-const Jimp = require('jimp');
+const sharp = require('sharp');
 const path = require('path');
 const morgan = require('morgan');
 
@@ -250,40 +250,26 @@ app.get('/proxy/image.do', async (req, res) => {
     const spritesheetPath = path.join(__dirname, 'public', '_spritesheet.png');
 
     try {
-        const fs = require('fs');
-        const fileBuffer = fs.readFileSync(spritesheetPath);
-        
-        let sheet;
+        // 1. Metadaten des Spritesheets auslesen, um Kachelgröße zu berechnen
+        const image = sharp(spritesheetPath);
+        const metadata = await image.metadata();
 
-        // --- NEU: DIREKTER KORREKTER AUFRUF FÜR JIMP V1+ ---
-        if (Jimp.Jimp && typeof Jimp.Jimp.read === 'function') {
-            // Wenn es das neue Struktur-Objekt ist
-            sheet = await Jimp.Jimp.read({ data: fileBuffer });
-        } else if (typeof Jimp.read === 'function') {
-            // Fallback für die ganz alte Version
-            sheet = await Jimp.read(fileBuffer);
-        } else {
-            // Wenn Jimp v1+ direkt als Funktion importiert wurde
-            sheet = await Jimp.read({ data: fileBuffer });
-        }
-
-        // --- AB HIER DIE WEITERE VERARBEITUNG ---
-        // Wichtig: In Jimp v1+ liegen die Bitmap-Daten flach auf der Instanz
-        const bitmapWidth = sheet.bitmap ? sheet.bitmap.width : sheet.width;
-        const bitmapHeight = sheet.bitmap ? sheet.bitmap.height : sheet.height;
-
-        const tileWidth = Math.floor(bitmapWidth / COLS_TOTAL);
-        const tileHeight = Math.floor(bitmapHeight / ROWS_TOTAL);
+        const tileWidth = Math.floor(metadata.width / COLS_TOTAL);
+        const tileHeight = Math.floor(metadata.height / ROWS_TOTAL);
 
         const startX = col * tileWidth;
         const startY = row * tileHeight;
         const w = 16;
         const h = 16;
-        
-        // Kachel schneiden und verkleinern
-        const icon = sheet.clone().crop({ x: startX, y: startY, w: tileWidth, h: tileHeight }).resize({ w: w, h: h });
 
-        // --- AB HIER BLEIBT DER GIGASET-HEADER & CO. IDENTISCH ---
+        // 2. Kachel ausschneiden, auf 16x16 skalieren und rohe RGBA-Pixel extrahieren
+        const rawPixelBuffer = await image
+            .extract({ left: startX, top: startY, width: tileWidth, height: tileHeight })
+            .resize(w, h)
+            .raw()
+            .toBuffer();
+
+        // 3. Gigaset FNT-Header vorbereiten (16x16)
         const header = Buffer.alloc(4);
         header.writeUInt16LE(w, 0);
         header.writeUInt16LE(h, 2);
@@ -291,23 +277,22 @@ app.get('/proxy/image.do', async (req, res) => {
         const chunks = [];
         const rowBytes = Math.floor((w + 7) / 8);
 
+        // 4. Durch die rohen RGBA-Pixel wandern (4 Bytes pro Pixel: R, G, B, A)
         for (let y = 0; y < h; y++) {
             const rowBuffer = Buffer.alloc(rowBytes, 0);
             for (let x = 0; x < w; x++) {
-                // getPixelColor funktioniert in beiden Welten gleich
-                const pixelColor = icon.getPixelColor(x, y);
-                const rgba = Jimp.intToRGBA ? Jimp.intToRGBA(pixelColor) : {
-                    r: (pixelColor >> 24) & 0xff,
-                    g: (pixelColor >> 16) & 0xff,
-                    b: (pixelColor >> 8) & 0xff,
-                    a: pixelColor & 0xff
-                };
+                const idx = (y * w + x) * 4;
+                const r = rawPixelBuffer[idx];
+                const g = rawPixelBuffer[idx + 1];
+                const b = rawPixelBuffer[idx + 2];
+                const a = rawPixelBuffer[idx + 3];
 
-                let luma = 255; 
-                if (rgba.a > 10) { 
-                    luma = 0.299 * rgba.r + 0.587 * rgba.g + 0.114 * rgba.b;
+                let luma = 255;
+                if (a > 10) {
+                    luma = 0.299 * r + 0.587 * g + 0.114 * b;
                 }
 
+                // Wenn der Pixel dunkel genug ist -> Bit im Gigaset-Format setzen
                 if (luma < 180) {
                     const byteIndex = Math.floor(x / 8);
                     const bitIndex = x % 8;
@@ -318,13 +303,14 @@ app.get('/proxy/image.do', async (req, res) => {
         }
 
         const fntBuffer = Buffer.concat([header, ...chunks]);
+        
         res.header('Content-Type', 'image/fnt');
         res.header('Content-Length', fntBuffer.length);
         return res.send(fntBuffer);
 
     } catch (error) {
-        console.error("[Spritesheet-Proxy] Fehler:", error.message || error);
-        return res.status(500).send('Fehler beim Verarbeiten des Bild-Rasters');
+        console.error("[Spritesheet-Proxy] Fehler:", error.message);
+        return res.status(500).send('Fehler beim Verarbeiten des Bild-Rasters mit Sharp');
     }
 });
 // =========================================================================
