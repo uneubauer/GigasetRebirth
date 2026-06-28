@@ -229,10 +229,18 @@ const handleWeatherSearch = (req, res) => {
     let macRaw = req.query.mac || '';
     let hsid = req.query.handsetid || '';
     
+    // SRE-FIX: Falls das Telefon die Parameter doppelt schickt (Array), nimm das erste Element
+    if (Array.isArray(macRaw)) macRaw = String(macRaw[0]);
+    if (Array.isArray(hsid)) hsid = String(hsid[0]);
+
+    // Falls durch doppelte Parameter ein Komma im String landet, schneide es ab
+    if (macRaw.includes(',')) macRaw = macRaw.split(',')[0];
+
     const mac = macRaw.replace(/:/g, '').toUpperCase().trim();
 
     // AUTOMATISCHE ERKENNUNG INNERHALB DER ORTSSUCHE
     if (mac && hsid) {
+        // ... HIER GEHT DER REST DER FUNKTION UNVERÄNDERT WEITER ...
         const userAgent = req.headers['user-agent'] || ''; 
         let config = getConfig();
         if (config.gateways && config.gateways[mac] && config.gateways[mac].handsets[hsid]) {
