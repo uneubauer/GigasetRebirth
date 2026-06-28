@@ -238,7 +238,78 @@ app.get('/info/request.do', (req, res) => {
     xml += `</body></html>`;
     return res.send(xml);
 });
+// =========================================================================
+// NEU: GIGASET SPRITESHEET PROXY (Wandelt PNG-Kacheln in .fnt um)
+// =========================================================================
+app.get('/proxy/image.do', async (req, res) => {
+    // Spalte (0 bis 4) und Zeile (0 bis 3) aus der URL holen
+    const col = parseInt(req.query.col) || 0;
+    const row = parseInt(req.query.row) || 0;
 
+    const COLS_TOTAL = 5;
+    const ROWS_TOTAL = 4;
+    
+    // Da das Bild jetzt im GitHub-Repo im public-Ordner liegt:
+    const spritesheetPath = path.join(__dirname, 'public', '_spritesheet.png');
+
+    try {
+        // 1. Spritesheet einlesen
+        const sheet = await Jimp.read(spritesheetPath);
+
+        // 2. Kachel-Größe berechnen
+        const tileWidth = Math.floor(sheet.bitmap.width / COLS_TOTAL);
+        const tileHeight = Math.floor(sheet.bitmap.height / ROWS_TOTAL);
+
+        const startX = col * tileWidth;
+        const startY = row * tileHeight;
+        
+        const w = 16;
+        const h = 16;
+        
+        // 3. Ausschnitt isolieren und auf 16x16 verkleinern
+        const icon = sheet.clone().crop(startX, startY, tileWidth, tileHeight).resize(w, h);
+
+        // 4. Gigaset-Header generieren
+        const header = Buffer.alloc(4);
+        header.writeUInt16LE(w, 0);
+        header.writeUInt16LE(h, 2);
+
+        const chunks = [];
+        const rowBytes = Math.floor((w + 7) / 8);
+
+        // 5. Pixel in 1-Bit Schwarz-Weiß-Array konvertieren
+        for (let y = 0; y < h; y++) {
+            const rowBuffer = Buffer.alloc(rowBytes, 0);
+            for (let x = 0; x < w; x++) {
+                const pixelColor = icon.getPixelColor(x, y);
+                const rgba = Jimp.intToRGBA(pixelColor);
+
+                let luma = 255; 
+                if (rgba.a > 10) { 
+                    luma = 0.299 * rgba.r + 0.587 * rgba.g + 0.114 * rgba.b;
+                }
+
+                if (luma < 180) {
+                    const byteIndex = Math.floor(x / 8);
+                    const bitIndex = x % 8;
+                    rowBuffer[byteIndex] |= (0x80 >> bitIndex);
+                }
+            }
+            chunks.push(rowBuffer);
+        }
+
+        const fntBuffer = Buffer.concat([header, ...chunks]);
+
+        // 6. Als .fnt-Datei ausgeben
+        res.header('Content-Type', 'image/fnt');
+        res.header('Content-Length', fntBuffer.length);
+        return res.send(fntBuffer);
+
+    } catch (error) {
+        console.error("[Spritesheet-Proxy] Fehler:", error.message);
+        return res.status(500).send('Fehler beim Verarbeiten des Bild-Rasters');
+    }
+});
 // =========================================================================
 // 3. ORTSSUCHE & LISTENAUSWAHL (Abfang für beide URL-Varianten)
 // =========================================================================
