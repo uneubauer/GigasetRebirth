@@ -225,10 +225,10 @@ app.get('/info/request.do', (req, res) => {
 
                 // --- NEU: ICON IN JEDER ZEILE EINBINDEN ---
                 xml += `<p style="text-align:center;">
-                    <b>${label}</b><br/>
-                    <img src="http://gigaset.net/proxy/image.do?col=${coords.col}&row=${coords.row}" width="16" height="16" alt="*" /><br/>
-                    ${cond}&nbsp;${tD}°C/${tN}°C
-                </p>`;
+    <b>${label}</b><br/>
+    <img src="http://gigaset.net/proxy/image.do?col=${coords.col}&amp;row=${coords.row}" width="16" height="16" alt="*" /><br/>
+    ${cond}&nbsp;${tD}°C/${tN}°C
+</p>`;
             }
         }
     } else {
