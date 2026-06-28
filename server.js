@@ -250,20 +250,24 @@ app.get('/proxy/image.do', async (req, res) => {
     const spritesheetPath = path.join(__dirname, 'public', '_spritesheet.png');
 
     try {
-        let sheet;
+        // 1. Datei direkt als Node-Buffer einlesen (umgeht das Jimp-Pfad-Chaos)
+        const fs = require('fs');
+        const fileBuffer = fs.readFileSync(spritesheetPath);
         
-        // 1. Prüfen, ob wir die klassische alte Jimp-Version nutzen (v0.x)
+        let sheet;
+
+        // 2. Buffer an die passende Jimp-Instanz übergeben
         if (typeof Jimp.read === 'function') {
-            sheet = await Jimp.read(spritesheetPath);
-        } 
-        // 2. Prüfen auf die neue Jimp-Version (v1+) mit der korrekten Objekt-Struktur
-        else {
+            sheet = await Jimp.read(fileBuffer); // Alte API (v0.x)
+        } else {
             const JimpInstance = Jimp.Jimp || Jimp;
-            if (typeof JimpInstance.read === 'function') {
-                sheet = await JimpInstance.read({ src: spritesheetPath });
+            // Neue API (v1+) erwartet den Buffer direkt oder in einem dedizierten Objekt
+            if (typeof JimpInstance.fromBuffer === 'function') {
+                sheet = await JimpInstance.fromBuffer(fileBuffer);
+            } else if (typeof JimpInstance.read === 'function') {
+                sheet = await JimpInstance.read(fileBuffer);
             } else {
-                // Letzter sicherer Fallback für Direktaufrufe in v1+
-                sheet = await JimpInstance({ src: spritesheetPath });
+                sheet = await JimpInstance({ data: fileBuffer });
             }
         }
         // Ab hier bleibt der Code absolut identisch:
