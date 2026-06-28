@@ -4,6 +4,7 @@ const path = require('path');
 const morgan = require('morgan');
 
 const app = express();
+const PORT = process.env.PORT || 8080;
 
 // Morgan für automatische Docker-Logs im 'dev'-Format
 app.use(morgan('dev'));
@@ -16,6 +17,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const CONFIG_PATH = path.join(__dirname, 'WEB-INF', 'config.json');
 const CITIES_PATH = path.join(__dirname, 'WEB-INF', 'cities.json');
+
 // Hilfsfunktion zum Normalisieren der MAC (Analog zu normMac in der JSP)
 function normMac(mac) {
     if (!mac) return "UNKNOWN";
@@ -44,6 +46,7 @@ function getGermanDayLabel(dayIndex, offset) {
     const days = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
     return days[dayIndex];
 }
+
 function getConfig() {
     if (!fs.existsSync(CONFIG_PATH)) return { gateways: {} };
     try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch (e) { return { gateways: {} }; }
@@ -60,12 +63,10 @@ app.get('/info/menu.jsp', (req, res) => {
     const macRaw = req.query.mac || ''; 
     const hsid = req.query.handsetid || '';
 
-    // Header exakt wie beim Tomcat-Server setzen
     res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.header('Pragma', 'no-cache');
 
-    // WICHTIG: Exakt die DOCTYPE-Zeile aus der JSP, komplett einzeilig ohne Leerzeichen am Anfang!
     const xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><body><ul><li><a href="/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}">Wetter</a></li><li><a href="#">Nachrichten</a></li><li><a href="#">Horoskop</a></li></ul></body></html>`;
 
     return res.send(xml);
@@ -78,50 +79,85 @@ app.get('/info/menu', (req, res) => { res.redirect(`/info/menu.jsp?mac=${req.que
 // =========================================================================
 // 2. SCREENSAVER-EINSTIEG / WEATHER DATA (request.do)
 // =========================================================================
-// =========================================================================
-// 2. SCREENSAVER / WEATHER DATA (request.do) - Vollständige JSP-Übersetzung
-// =========================================================================
 app.get('/info/request.do', (req, res) => {
     const ua = req.headers['user-agent'] || ''; 
     const macRaw = req.query.mac || ''; 
     const hsid = req.query.handsetid || '1';
     const macClean = normMac(macRaw);
 
-    // --- AUTODISCOVERY START (Registrierung in config.json wie gehabt) ---
+    // --- AUTODISCOVERY START ---
     if (ua && macRaw && hsid) {
         let config = getConfig(); if (!config.gateways) config.gateways = {};
         const parts = ua.replace(/_/g, ' ').split('/');
+        
         let baseModel = (parts && parts[0]) ? parts[0].replace('Gigaset ', '').trim() : "GO-Box / N510";
-        let fwVersion = "---", hsModel = "Mobilteil";
+        let fwVersion = "---";
+        let hsModel = "";
+
         if (parts && parts.length > 1) {
             let secondPart = parts[1].replace(/\(/g, '').replace(/\)/g, '');
             if (secondPart.includes(';')) {
-                const subParts = secondPart.split(';'); fwVersion = subParts[0] ? subParts[0].trim() : "---";
-                for (let sub of subParts) { if (sub.includes('HS=')) hsModel = sub.replace('HS=', '').trim(); }
-            } else { fwVersion = secondPart.trim(); }
+                const subParts = secondPart.split(';'); 
+                fwVersion = subParts[0] ? subParts[0].trim() : "---";
+                for (let sub of subParts) { 
+                    if (sub.includes('HS=')) hsModel = sub.replace('HS=', '').trim(); 
+                }
+            } else { 
+                fwVersion = secondPart.trim(); 
+            }
         }
+
+        // Falls kein exaktes HS-Modell im UA-String war, versuchen wir den Match aus dem vorderen Teil
+        if (!hsModel) {
+            const modelMatch = ua.match(/Gigaset_([A-Za-z0-9]+)/);
+            if (modelMatch && modelMatch[1]) {
+                hsModel = `Gigaset ${modelMatch[1].replace('IP', '').trim()}`;
+            } else {
+                hsModel = `Mobilteil ${hsid}`;
+            }
+        } else if (!hsModel.startsWith('Gigaset')) {
+            hsModel = `Gigaset ${hsModel}`;
+        }
+
         let changed = false;
         if (!config.gateways[macClean]) { config.gateways[macClean] = { handsets: {} }; changed = true; }
+        
         if (!config.gateways[macClean].handsets[hsid]) {
-            config.gateways[macClean].handsets[hsid] = { mode: "weather", city: "Mitteldachstetten", box_model: baseModel, box_fw: fwVersion, hs_model: hsModel };
+            config.gateways[macClean].handsets[hsid] = { 
+                mode: "weather", 
+                city: "Mitteldachstetten", 
+                box_model: baseModel, 
+                box_fw: fwVersion, 
+                hs_model: hsModel 
+            };
             changed = true;
+        } else {
+            // Bestehendes Profil aktualisieren, falls dort noch der generische Name oder gähnende Leere steht
+            let hs = config.gateways[macClean].handsets[hsid];
+            if (!hs.hs_model || hs.hs_model.startsWith('Mobilteil')) {
+                hs.hs_model = hsModel;
+                changed = true;
+            }
+            if (hs.box_model !== baseModel) { hs.box_model = baseModel; changed = true; }
+            if (hs.box_fw !== fwVersion) { hs.box_fw = fwVersion; changed = true; }
         }
-        if (changed) saveConfig(config);
+
+        if (changed) {
+            saveConfig(config);
+            console.log(`[Sync] Gerätedaten via Screensaver aktualisiert für HS ${hsid}: ${hsModel}`);
+        }
     }
     // --- AUTODISCOVERY ENDE ---
 
-    // Standard-Stadt falls nichts gefunden wird
     let cityName = "WETTER";
     let weatherArray = null;
 
     try {
-        // 1. Stadt aus Haupt-Config holen
         let config = getConfig();
         if (config.gateways && config.gateways[macClean] && config.gateways[macClean].handsets[hsid]) {
             cityName = config.gateways[macClean].handsets[hsid].city || "WETTER";
         }
 
-        // 2. Wetterdaten aus der spezifischen cache_[MAC].json lesen
         const cachePath = path.join(__dirname, 'WEB-INF', `cache_${macClean}.json`);
         if (fs.existsSync(cachePath)) {
             const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
@@ -137,15 +173,12 @@ app.get('/info/request.do', (req, res) => {
         console.error("Fehler beim Verarbeiten des Wettercaches:", e);
     }
 
-    // Stadt-Namen für das Display umformatieren (Umlaute raus, Uppercase)
     const displayCity = cityName.replace(/ü/g, "UE").replace(/ä/g, "AE").replace(/ö/g, "OE").replace(/ß/g, "SS").toUpperCase();
 
-    // Headers strikt setzen (Wichtig: OMA XHTML 1.2 Doctype Match)
     res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.header('Pragma', 'no-cache');
 
-    // XML Start-Skelett (Absolute Zeile 1, Byte 0)
     let xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${displayCity}</title></head><body bgcolor="#ffffff">`;
 
     if (weatherArray && weatherArray.length > 0) {
@@ -154,14 +187,11 @@ app.get('/info/request.do', (req, res) => {
         for (let d = 0; d < 3; d++) {
             const targetDate = new Date(now);
             targetDate.setDate(now.getDate() + d);
-            
-            // Format YYYY-MM-DD
             const targetStr = targetDate.toISOString().split('T')[0];
             
             let dayEntry = null;
             let nightEntry = null;
 
-            // Einträge für Mittag und Nacht filtern
             for (let i = 0; i < weatherArray.length; i++) {
                 const e = weatherArray[i];
                 const ts = e.timestamp || '';
@@ -171,7 +201,6 @@ app.get('/info/request.do', (req, res) => {
                 }
             }
 
-            // Fallback falls kein exakter Mittagswert da ist
             if (!dayEntry) {
                 dayEntry = weatherArray.find(e => (e.timestamp || '').startsWith(targetStr)) || null;
             }
@@ -186,16 +215,12 @@ app.get('/info/request.do', (req, res) => {
             }
         }
     } else {
-        // Fallback falls der Cache (noch) leer ist
         xml += `<p style="text-align:center;">Lade Daten...<br/>Bitte warten</p>`;
     }
 
     xml += `</body></html>`;
-
-    // Komplett flachgedrückt ohne störende Absätze absenden
     return res.send(xml);
 });
-
 
 // =========================================================================
 // 3. ORTSSUCHE & LISTENAUSWAHL (Abfang für beide URL-Varianten)
@@ -206,7 +231,7 @@ const handleWeatherSearch = (req, res) => {
     
     const mac = macRaw.replace(/:/g, '').toUpperCase().trim();
 
-    // AUTOMATISCHE ERKENNUNG
+    // AUTOMATISCHE ERKENNUNG INNERHALB DER ORTSSUCHE
     if (mac && hsid) {
         const userAgent = req.headers['user-agent'] || ''; 
         let config = getConfig();
@@ -252,12 +277,10 @@ const handleWeatherSearch = (req, res) => {
         } 
     }
 
-    // Header exakt setzen
     res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.header('Pragma', 'no-cache');
 
-    // WICHTIG: DTD-Pfad korrigiert (ohne Bindestrich im Dateinamen, matcht die alte Spezifikation)
     let xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Ort waehlen</title></head><body><p><b>Ort waehlen</b></p><ul>`;
     
     cities.forEach(c => { 
@@ -269,9 +292,9 @@ const handleWeatherSearch = (req, res) => {
     return res.send(xml);
 };
 
-// Hier registrieren wir beide Pfade, damit das Telefon auf jeden Fall trifft!
 app.get('/info/weather_search', handleWeatherSearch);
 app.get('/info/weather_search.jsp', handleWeatherSearch);
+
 // =========================================================================
 // 4. SPEICHERN & REFRESH (Absolut XML-konform escaped)
 // =========================================================================
@@ -297,7 +320,6 @@ app.get('/info/weather_save.jsp', (req, res) => {
             config.gateways[mac].handsets[hsid].city = city;
             config.gateways[mac].handsets[hsid].mode = mode;
 
-            // Koordinaten-Matching aus cities.json
             if (fs.existsSync(CITIES_PATH)) {
                 try {
                     const citiesData = JSON.parse(fs.readFileSync(CITIES_PATH, 'utf8')).cities || [];
@@ -314,12 +336,10 @@ app.get('/info/weather_save.jsp', (req, res) => {
         }
     }
 
-    // Wenn der Aufruf aus dem Web-Admin kam, leiten wir direkt per HTTP-Redirect um (kein XML nötig!)
     if (fromAdmin) {
         return res.redirect(`/admin.html?mac=${macRaw}&hsid=${hsid}`);
     }
 
-    // FÜR DAS TELEFON: Die Parameter müssen im XML explizit mit &amp; getrennt sein!
     const cleanMac = encodeURIComponent(macRaw);
     const cleanHs = encodeURIComponent(hsid);
     const xmlRedirectUrl = `/info/weather_search?mac=${cleanMac}&amp;handsetid=${cleanHs}`;
@@ -328,17 +348,16 @@ app.get('/info/weather_save.jsp', (req, res) => {
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.header('Pragma', 'no-cache');
 
-    // Hier ist das entscheidende &amp; im String, das jetzt nicht mehr angefasst wird:
     const xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Gespeichert</title><meta http-equiv="refresh" content="1; URL=${xmlRedirectUrl}" /></head><body><p style="text-align:center;"><b>STADT GESPEICHERT!</b></p></body></html>`;
 
     return res.send(xml);
 });
+
 // =========================================================================
 // 5. WEB-ADMIN CONFIG API (Liefert Daten für admin.html)
 // =========================================================================
 app.get('/api/config', (req, res) => {
     const config = getConfig();
-    // Falls ein bestimmtes Mobilteil abgefragt wird, liefern wir dessen Details mit
     const selMac = req.query.mac || '';
     const selHs = req.query.hsid || '';
     
@@ -352,6 +371,7 @@ app.get('/api/config', (req, res) => {
         activeHandset: activeHandset
     });
 });
+
 // =========================================================================
 // 6. WETTER-UPDATE DATA FETCH (BrightSky API / DWD Übersetzung)
 // =========================================================================
@@ -361,15 +381,12 @@ app.get('/info/weather_update', async (req, res) => {
         if (!config.gateways) return res.status(400).json({ error: "Keine Gateways in config.json" });
 
         const today = new Date().toISOString().split('T')[0];
-        
-        // End-Datum berechnen (heute + 3 Tage)
         const endDate = new Date();
         endDate.setDate(endDate.getDate() + 3);
         const end = endDate.toISOString().split('T')[0];
 
         let updates = 0;
 
-        // Alle Basisstationen durchgehen
         for (const mac of Object.keys(config.gateways)) {
             const safeMac = mac.replace(/:/g, '').toUpperCase().trim();
             const handsets = config.gateways[mac].handsets || {};
@@ -377,31 +394,24 @@ app.get('/info/weather_update', async (req, res) => {
             const cacheRoot = { handsets: {}, updated: new Date().toISOString() };
             let hasDataForBase = false;
 
-            // Jedes Mobilteil dieser Basis abfragen
             for (const hsid of Object.keys(handsets)) {
                 const hs = handsets[hsid];
-
-                // Koordinaten direkt aus dem Mobilteil-Objekt ziehen (Fallback auf deine Defaults)
                 const lat = hs.lat || "49.4";
                 const lon = hs.lon || "10.4";
                 const city = hs.city || "Wetter";
 
-                // BrightSky API-URL zusammenbauen
                 const apiUrl = `https://api.brightsky.dev/weather?lat=${lat}&lon=${lon}&date=${today}&last_date=${end}&units=dwd`;
 
                 try {
                     const response = await fetch(apiUrl);
                     if (response.status === 200) {
                         const weatherData = await response.json();
-
-                        // Cache-Struktur exakt wie in deiner JSP aufbauen
                         cacheRoot.handsets[hsid] = {
                             city: city,
                             lat: lat,
                             lon: lon,
                             weather: weatherData.weather || []
                         };
-
                         hasDataForBase = true;
                         updates++;
                     }
@@ -410,49 +420,41 @@ app.get('/info/weather_update', async (req, res) => {
                 }
             }
 
-            // Cache-Datei für diese Basis schreiben, wenn mindestens ein Mobilteil erfolgreich war
             if (hasDataForBase) {
                 const cacheFilePath = path.join(__dirname, 'WEB-INF', `cache_${safeMac}.json`);
                 fs.writeFileSync(cacheFilePath, JSON.stringify(cacheRoot, null, 2), 'utf8');
             }
         }
 
-        // Response exakt wie bei der JSP ("UPDATED: X")
         return res.send(`UPDATED: ${updates}`);
-
     } catch (error) {
         console.error("Schwerwiegender Fehler im weather_update:", error);
         return res.status(500).send("UPDATED: 0 (Error)");
     }
 });
-// Start-Routing für PC-Browser
+
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'admin.html')); });
+
 // =========================================================================
 // AUTOMATISCHES WETTER-UPDATE IM CONTAINER (Alle 30 Minuten)
 // =========================================================================
 const DREISSIG_MINUTEN = 30 * 60 * 1000;
 
-// Funktion, die die Logik von /info/weather_update intern ausführt
 async function triggerInternalWeatherUpdate() {
     try {
         console.log(`[${new Date().toISOString()}] Automatisches Wetterupdate im Container gestartet...`);
-        
-        // Da wir uns im selben Prozess befinden, rufen wir die Route einfach lokal auf
         const response = await fetch(`http://localhost:${PORT}/info/weather_update`);
         const result = await response.text();
-        
         console.log(`[${new Date().toISOString()}] Update-Ergebnis: ${result}`);
     } catch (e) {
         console.error(`[${new Date().toISOString()}] Fehler beim automatischen Wetterupdate:`, e.message);
     }
 }
 
-// 1. Sofort beim Container-Start einmal ausführen, damit der Cache direkt da ist
 setTimeout(() => {
     triggerInternalWeatherUpdate();
-}, 5000); // 5 Sekunden Verzögerung nach Boot, damit der Server sicher bereit ist
+}, 5000);
 
-// 2. Danach alle 30 Minuten endlos wiederholen
 setInterval(triggerInternalWeatherUpdate, DREISSIG_MINUTEN);
-const PORT = process.env.PORT || 8080;
+
 app.listen(PORT, () => { console.log(`Schlanker Gigaset Rebirth Container laeuft auf Port ${PORT}`); });
