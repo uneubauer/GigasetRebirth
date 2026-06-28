@@ -250,39 +250,40 @@ app.get('/proxy/image.do', async (req, res) => {
     const spritesheetPath = path.join(__dirname, 'public', '_spritesheet.png');
 
     try {
-        // 1. Datei direkt als Node-Buffer einlesen (umgeht das Jimp-Pfad-Chaos)
         const fs = require('fs');
         const fileBuffer = fs.readFileSync(spritesheetPath);
         
         let sheet;
 
-        // 2. Buffer an die passende Jimp-Instanz übergeben
-        if (typeof Jimp.read === 'function') {
-            sheet = await Jimp.read(fileBuffer); // Alte API (v0.x)
+        // --- NEU: DIREKTER KORREKTER AUFRUF FÜR JIMP V1+ ---
+        if (Jimp.Jimp && typeof Jimp.Jimp.read === 'function') {
+            // Wenn es das neue Struktur-Objekt ist
+            sheet = await Jimp.Jimp.read({ data: fileBuffer });
+        } else if (typeof Jimp.read === 'function') {
+            // Fallback für die ganz alte Version
+            sheet = await Jimp.read(fileBuffer);
         } else {
-            const JimpInstance = Jimp.Jimp || Jimp;
-            // Neue API (v1+) erwartet den Buffer direkt oder in einem dedizierten Objekt
-            if (typeof JimpInstance.fromBuffer === 'function') {
-                sheet = await JimpInstance.fromBuffer(fileBuffer);
-            } else if (typeof JimpInstance.read === 'function') {
-                sheet = await JimpInstance.read(fileBuffer);
-            } else {
-                sheet = await JimpInstance({ data: fileBuffer });
-            }
+            // Wenn Jimp v1+ direkt als Funktion importiert wurde
+            sheet = await Jimp.read({ data: fileBuffer });
         }
-        // Ab hier bleibt der Code absolut identisch:
-        const tileWidth = Math.floor(sheet.bitmap.width / COLS_TOTAL);
-        const tileHeight = Math.floor(sheet.bitmap.height / ROWS_TOTAL);
+
+        // --- AB HIER DIE WEITERE VERARBEITUNG ---
+        // Wichtig: In Jimp v1+ liegen die Bitmap-Daten flach auf der Instanz
+        const bitmapWidth = sheet.bitmap ? sheet.bitmap.width : sheet.width;
+        const bitmapHeight = sheet.bitmap ? sheet.bitmap.height : sheet.height;
+
+        const tileWidth = Math.floor(bitmapWidth / COLS_TOTAL);
+        const tileHeight = Math.floor(bitmapHeight / ROWS_TOTAL);
 
         const startX = col * tileWidth;
         const startY = row * tileHeight;
         const w = 16;
         const h = 16;
         
-        const icon = sheet.clone().crop(startX, startY, tileWidth, tileHeight).resize(w, h);
-        // ... (Rest des Codes bleibt gleich)
+        // Kachel schneiden und verkleinern
+        const icon = sheet.clone().crop({ x: startX, y: startY, w: tileWidth, h: tileHeight }).resize({ w: w, h: h });
 
-        // 4. Gigaset-Header generieren
+        // --- AB HIER BLEIBT DER GIGASET-HEADER & CO. IDENTISCH ---
         const header = Buffer.alloc(4);
         header.writeUInt16LE(w, 0);
         header.writeUInt16LE(h, 2);
@@ -290,12 +291,17 @@ app.get('/proxy/image.do', async (req, res) => {
         const chunks = [];
         const rowBytes = Math.floor((w + 7) / 8);
 
-        // 5. Pixel in 1-Bit Schwarz-Weiß-Array konvertieren
         for (let y = 0; y < h; y++) {
             const rowBuffer = Buffer.alloc(rowBytes, 0);
             for (let x = 0; x < w; x++) {
+                // getPixelColor funktioniert in beiden Welten gleich
                 const pixelColor = icon.getPixelColor(x, y);
-                const rgba = Jimp.intToRGBA(pixelColor);
+                const rgba = Jimp.intToRGBA ? Jimp.intToRGBA(pixelColor) : {
+                    r: (pixelColor >> 24) & 0xff,
+                    g: (pixelColor >> 16) & 0xff,
+                    b: (pixelColor >> 8) & 0xff,
+                    a: pixelColor & 0xff
+                };
 
                 let luma = 255; 
                 if (rgba.a > 10) { 
@@ -312,14 +318,12 @@ app.get('/proxy/image.do', async (req, res) => {
         }
 
         const fntBuffer = Buffer.concat([header, ...chunks]);
-
-        // 6. Als .fnt-Datei ausgeben
         res.header('Content-Type', 'image/fnt');
         res.header('Content-Length', fntBuffer.length);
         return res.send(fntBuffer);
 
     } catch (error) {
-        console.error("[Spritesheet-Proxy] Fehler:", error.message);
+        console.error("[Spritesheet-Proxy] Fehler:", error.message || error);
         return res.status(500).send('Fehler beim Verarbeiten des Bild-Rasters');
     }
 });
