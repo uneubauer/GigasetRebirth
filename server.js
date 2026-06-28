@@ -250,17 +250,22 @@ app.get('/proxy/image.do', async (req, res) => {
     const spritesheetPath = path.join(__dirname, 'public', '_spritesheet.png');
 
     try {
-        // --- KORREKTUR FÜR JIMP V1+ UND ÄLTER ---
         let sheet;
+        
+        // 1. Prüfen, ob wir die klassische alte Jimp-Version nutzen (v0.x)
         if (typeof Jimp.read === 'function') {
-            sheet = await Jimp.read(spritesheetPath); // Alte API
-        } else if (Jimp.Jimp && typeof Jimp.Jimp.read === 'function') {
-            sheet = await Jimp.Jimp.read(spritesheetPath); // Neue API (v1+)
-        } else {
-            // Fallback, falls Jimp direkt als Funktion importiert wurde (ESM-Style)
-            sheet = await Jimp({ src: spritesheetPath });
+            sheet = await Jimp.read(spritesheetPath);
+        } 
+        // 2. Prüfen auf die neue Jimp-Version (v1+) mit der korrekten Objekt-Struktur
+        else {
+            const JimpInstance = Jimp.Jimp || Jimp;
+            if (typeof JimpInstance.read === 'function') {
+                sheet = await JimpInstance.read({ src: spritesheetPath });
+            } else {
+                // Letzter sicherer Fallback für Direktaufrufe in v1+
+                sheet = await JimpInstance({ src: spritesheetPath });
+            }
         }
-
         // Ab hier bleibt der Code absolut identisch:
         const tileWidth = Math.floor(sheet.bitmap.width / COLS_TOTAL);
         const tileHeight = Math.floor(sheet.bitmap.height / ROWS_TOTAL);
