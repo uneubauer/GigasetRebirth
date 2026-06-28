@@ -1,5 +1,6 @@
 const express = require('express');
 const fs = require('fs');
+const Jimp = require('jimp');
 const path = require('path');
 const morgan = require('morgan');
 
@@ -107,7 +108,6 @@ app.get('/info/request.do', (req, res) => {
             }
         }
 
-        // Falls kein exaktes HS-Modell im UA-String war, versuchen wir den Match aus dem vorderen Teil
         if (!hsModel) {
             const modelMatch = ua.match(/Gigaset_([A-Za-z0-9]+)/);
             if (modelMatch && modelMatch[1]) {
@@ -132,7 +132,6 @@ app.get('/info/request.do', (req, res) => {
             };
             changed = true;
         } else {
-            // Bestehendes Profil aktualisieren, falls dort noch der generische Name oder gähnende Leere steht
             let hs = config.gateways[macClean].handsets[hsid];
             if (!hs.hs_model || hs.hs_model.startsWith('Mobilteil')) {
                 hs.hs_model = hsModel;
@@ -179,11 +178,21 @@ app.get('/info/request.do', (req, res) => {
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.header('Pragma', 'no-cache');
 
-    let xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>${displayCity}</title></head><body bgcolor="#ffffff">`;
+    // --- NEU: META-TAGS NACH KAPITEL 2.5.3 INJIZIEREN ---
+    let xml = `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta name="expires" content="1800" />
+    <meta name="imageproxy" content="http://gigaset.net/proxy/image.do" />
+    <title>${displayCity}</title>
+</head>
+<body bgcolor="#ffffff">`;
 
     if (weatherArray && weatherArray.length > 0) {
         const now = new Date();
         
+        // Für den allerersten Eintrag (heute) zeigen wir das Icon groß im Screensaver
         for (let d = 0; d < 3; d++) {
             const targetDate = new Date(now);
             targetDate.setDate(now.getDate() + d);
@@ -211,7 +220,15 @@ app.get('/info/request.do', (req, res) => {
                 const cond = translateCondition(dayEntry.condition);
                 const label = getGermanDayLabel(targetDate.getDay(), d);
 
-                xml += `<p style="text-align:center;">${label}<br/>${cond}&nbsp;${tD}°C/${tN}°C</p>`;
+                // --- NEU: RASTER-KOORDINATEN ERMITTELN ---
+                let coords = getWeatherCoords(dayEntry.condition);
+
+                // --- NEU: ICON IN JEDER ZEILE EINBINDEN ---
+                xml += `<p style="text-align:center;">
+                    <b>${label}</b><br/>
+                    <img src="http://gigaset.net/proxy/image.do?col=${coords.col}&row=${coords.row}" width="16" height="16" alt="*" /><br/>
+                    ${cond}&nbsp;${tD}°C/${tN}°C
+                </p>`;
             }
         }
     } else {
@@ -464,5 +481,27 @@ setTimeout(() => {
 }, 5000);
 
 setInterval(triggerInternalWeatherUpdate, DREISSIG_MINUTEN);
+// =========================================================================
+// HILFSFUNKTION: MAPPT DEINE WEATHER-CONDITIONS AUF DAS SPRITESHEET
+// =========================================================================
+function getWeatherCoords(condition) {
+    const cond = (condition || '').toLowerCase();
 
+    // Standard-Fallback (Sonne hinter kleiner Wolke / Heiter)
+    let coords = { col: 3, row: 2 }; 
+
+    if (cond.includes('clear') || cond.includes('sonne') || cond.includes('heiter')) {
+        coords = { col: 1, row: 1 }; // Volle Sonne (Zeile 2, Spalte 2)
+    } else if (cond.includes('thunder') || cond.includes('gewitter')) {
+        coords = { col: 0, row: 1 }; // Blitz (Zeile 2, Spalte 1)
+    } else if (cond.includes('snow') || cond.includes('schnee')) {
+        coords = { col: 4, row: 0 }; // Schneeflocke groß (Zeile 1, Spalte 5)
+    } else if (cond.includes('rain') || cond.includes('regen') || cond.includes('schauer')) {
+        coords = { col: 1, row: 0 }; // Regen / Tropfen (Zeile 1, Spalte 2)
+    } else if (cond.includes('cloud') || cond.includes('wolk')) {
+        coords = { col: 4, row: 1 }; // Sonne hinter dicken Wolken (Zeile 2, Spalte 5)
+    }
+
+    return coords;
+}
 app.listen(PORT, () => { console.log(`Schlanker Gigaset Rebirth Container laeuft auf Port ${PORT}`); });
