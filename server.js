@@ -238,11 +238,7 @@ app.get('/info/request.do', (req, res) => {
     xml += `</body></html>`;
     return res.send(xml);
 });
-// =========================================================================
-// NEU: GIGASET SPRITESHEET PROXY (Wandelt PNG-Kacheln in .fnt um)
-// =========================================================================
-const sharp = require('sharp');
-const path = require('path');
+
 
 // =========================================================================
 // GIGASET SPRITESHEET PROXY (Binär-Korrektur)
