@@ -241,6 +241,12 @@ app.get('/info/request.do', (req, res) => {
 // =========================================================================
 // NEU: GIGASET SPRITESHEET PROXY (Wandelt PNG-Kacheln in .fnt um)
 // =========================================================================
+const sharp = require('sharp');
+const path = require('path');
+
+// =========================================================================
+// GIGASET SPRITESHEET PROXY (Binär-Korrektur)
+// =========================================================================
 app.get('/proxy/image.do', async (req, res) => {
     const col = parseInt(req.query.col) || 0;
     const row = parseInt(req.query.row) || 0;
@@ -250,7 +256,6 @@ app.get('/proxy/image.do', async (req, res) => {
     const spritesheetPath = path.join(__dirname, 'public', '_spritesheet.png');
 
     try {
-        // 1. Metadaten des Spritesheets auslesen, um Kachelgröße zu berechnen
         const image = sharp(spritesheetPath);
         const metadata = await image.metadata();
 
@@ -262,22 +267,22 @@ app.get('/proxy/image.do', async (req, res) => {
         const w = 16;
         const h = 16;
 
-        // 2. Kachel ausschneiden, auf 16x16 skalieren und rohe RGBA-Pixel extrahieren
+        // Rohe RGBA-Pixel holen
         const rawPixelBuffer = await image
             .extract({ left: startX, top: startY, width: tileWidth, height: tileHeight })
             .resize(w, h)
             .raw()
             .toBuffer();
 
-        // 3. Gigaset FNT-Header vorbereiten (16x16)
+        // 1. Header erstellen (4 Bytes) -> Entspricht Hex: 10 00 10 00
         const header = Buffer.alloc(4);
-        header.writeUInt16LE(w, 0);
-        header.writeUInt16LE(h, 2);
+        header.writeUInt16LE(w, 0);  // Breite 16
+        header.writeUInt16LE(h, 2);  // Höhe 16
 
+        // 2. Pixel-Chunks berechnen (32 Bytes für 16x16)
         const chunks = [];
-        const rowBytes = Math.floor((w + 7) / 8);
+        const rowBytes = Math.floor((w + 7) / 8); // 2 Bytes pro Zeile
 
-        // 4. Durch die rohen RGBA-Pixel wandern (4 Bytes pro Pixel: R, G, B, A)
         for (let y = 0; y < h; y++) {
             const rowBuffer = Buffer.alloc(rowBytes, 0);
             for (let x = 0; x < w; x++) {
@@ -287,13 +292,11 @@ app.get('/proxy/image.do', async (req, res) => {
                 const b = rawPixelBuffer[idx + 2];
                 const a = rawPixelBuffer[idx + 3];
 
-                let luma = 255;
-                if (a > 10) {
-                    luma = 0.299 * r + 0.587 * g + 0.114 * b;
-                }
+                // Helligkeit berechnen (Alpha ignorieren, falls kein echter Alpha-Kanal da ist)
+                let luma = 0.299 * r + 0.587 * g + 0.114 * b;
 
-                // Wenn der Pixel dunkel genug ist -> Bit im Gigaset-Format setzen
-                if (luma < 180) {
+                // Schwellenwert: Dunkle Pixel werden auf dem Mobilteil schwarz
+                if (luma < 200) {
                     const byteIndex = Math.floor(x / 8);
                     const bitIndex = x % 8;
                     rowBuffer[byteIndex] |= (0x80 >> bitIndex);
@@ -302,15 +305,22 @@ app.get('/proxy/image.do', async (req, res) => {
             chunks.push(rowBuffer);
         }
 
+        // Header (4B) + Chunks (32B) zusammenfügen = Exakt 36 Bytes Binärdaten
         const fntBuffer = Buffer.concat([header, ...chunks]);
         
-        res.header('Content-Type', 'image/fnt');
-        res.header('Content-Length', fntBuffer.length);
-        return res.send(fntBuffer);
+        // --- DIE ENTSCHEIDENDEN HEADER FÜR REINE BINÄRDATEN ---
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Length', fntBuffer.length);
+        res.setHeader('Content-Disposition', 'attachment; filename=image.fnt');
+        res.setHeader('Cache-Control', 'public, max-age=31536000');
+        res.setHeader('Connection', 'close');
+
+        // Sende den rohen Buffer ohne String-Formatierung
+        return res.end(fntBuffer, 'binary');
 
     } catch (error) {
         console.error("[Spritesheet-Proxy] Fehler:", error.message);
-        return res.status(500).send('Fehler beim Verarbeiten des Bild-Rasters mit Sharp');
+        return res.status(500).send('Fehler beim Verarbeiten des Bild-Rasters');
     }
 });
 // =========================================================================
