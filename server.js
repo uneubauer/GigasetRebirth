@@ -226,7 +226,7 @@ app.get('/info/request.do', (req, res) => {
                 // --- NEU: ICON IN JEDER ZEILE EINBINDEN ---
                 xml += `<p style="text-align:center;">
     <b>${label}</b><br/>
-    <img src="/proxy/image.do?col=${coords.col}&amp;row=${coords.row}" /><br/>
+    <object data="/proxy/image.do?col=${coords.col}&amp;row=${coords.row}" type="image/fnt" width="16" height="16"></object><br/>
     ${cond}&nbsp;${tD}°C/${tN}°C
 </p>`;
             }
@@ -301,18 +301,18 @@ for (let y = 0; y < h; y++) {
     chunks.push(rowBuffer);
 }
 
-        // Header (4B) + Chunks (32B) zusammenfügen = Exakt 36 Bytes Binärdaten
+        // Header (4B) + Chunks (32B) zusammenfügen
         const fntBuffer = Buffer.concat([header, ...chunks]);
         
-        // --- DIE ENTSCHEIDENDEN HEADER FÜR REINE BINÄRDATEN ---
-        res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Content-Length', fntBuffer.length);
-        res.setHeader('Content-Disposition', 'attachment; filename=image.fnt');
-        res.setHeader('Cache-Control', 'public, max-age=31536000');
-        res.setHeader('Connection', 'close');
+        // Exakt auf das type='image/fnt' des <object>-Tags abgestimmt:
+        res.writeHead(200, {
+            'Content-Type': 'image/fnt', 
+            'Content-Length': fntBuffer.length,
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Connection': 'close' // Wichtig für Gigaset, damit die Verbindung sauber kappt
+        });
 
-        // Sende den rohen Buffer ohne String-Formatierung
-        return res.end(fntBuffer, 'binary');
+        return res.end(fntBuffer);
 
     } catch (error) {
         console.error("[Spritesheet-Proxy] Fehler:", error.message);
