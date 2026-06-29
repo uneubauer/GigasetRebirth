@@ -279,27 +279,27 @@ app.get('/proxy/image.do', async (req, res) => {
         const chunks = [];
         const rowBytes = Math.floor((w + 7) / 8); // 2 Bytes pro Zeile
 
-        for (let y = 0; y < h; y++) {
-            const rowBuffer = Buffer.alloc(rowBytes, 0);
-            for (let x = 0; x < w; x++) {
-                const idx = (y * w + x) * 4;
-                const r = rawPixelBuffer[idx];
-                const g = rawPixelBuffer[idx + 1];
-                const b = rawPixelBuffer[idx + 2];
-                const a = rawPixelBuffer[idx + 3];
+        // Nutze diese Schleife, falls die Icons im Screensaver "unsichtbar" oder als schwarzer Kasten erscheinen:
+for (let y = 0; y < h; y++) {
+    const rowBuffer = Buffer.alloc(rowBytes, 0);
+    for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4;
+        const r = rawPixelBuffer[idx];
+        const g = rawPixelBuffer[idx + 1];
+        const b = rawPixelBuffer[idx + 2];
+        const a = rawPixelBuffer[idx + 3];
 
-                // Helligkeit berechnen (Alpha ignorieren, falls kein echter Alpha-Kanal da ist)
-                let luma = 0.299 * r + 0.587 * g + 0.114 * b;
-
-                // Schwellenwert: Dunkle Pixel werden auf dem Mobilteil schwarz
-                if (luma < 200) {
-                    const byteIndex = Math.floor(x / 8);
-                    const bitIndex = x % 8;
-                    rowBuffer[byteIndex] |= (0x80 >> bitIndex);
-                }
-            }
-            chunks.push(rowBuffer);
+        // Wenn der Pixel vom Spritesheet REIN WEISS ist (der Hintergrund des Bildes),
+        // setzen wir hier das Bit, damit es auf dem schwarzen Display transparent/schwarz wird
+        if (a < 30 || (r > 240 && g > 240 && b > 240)) {
+            const byteIndex = Math.floor(x / 8);
+            const bitIndex = x % 8;
+            rowBuffer[byteIndex] |= (0x80 >> bitIndex);
         }
+        // Die farbigen Icons bleiben hier 0, was auf dem schwarzen Display dann hell leuchtet
+    }
+    chunks.push(rowBuffer);
+}
 
         // Header (4B) + Chunks (32B) zusammenfügen = Exakt 36 Bytes Binärdaten
         const fntBuffer = Buffer.concat([header, ...chunks]);
