@@ -245,81 +245,236 @@ xml += `<p style="text-align:center;">
 
 
 // =========================================================================
-// GIGASET SPRITESHEET PROXY (Binär-Korrektur)
+// SCREENSAVER-EINSTIEG / WEATHER DATA & IMAGE PROXY (request.do)
 // =========================================================================
-app.get('/info/image.do', async (req, res) => {
-    try {
-        const col = parseInt(req.query.col) || 0;
-        const row = parseInt(req.query.row) || 0;
-        
-        console.log(`[Spritesheet-Proxy] BILD-AUFRUF ERFOLGREICH! Spalte: ${col}, Reihe: ${row}`);
-        
-        const w = 16;
-        const h = 16;
-        const rowBytes = 2;
-        const chunks = [];
+app.get('/info/request.do', async (req, res) => {
+    const macRaw = req.query.mac || ''; 
+    const hsid = req.query.handsetid || '1';
+    const macClean = normMac(macRaw);
 
-        // 1. Pfad zu deinem Spritesheet (Passe 'spritesheet.png' ggf. an deinen echten Dateinamen an!)
-        const spritesheetPath = path.join(__dirname, 'public', '_spritesheet.png'); 
+    // ---------------------------------------------------------------------
+    // NEU: WEICHENSTELLUNG - WENN EIN BILD ANGEFORDERT WIRD
+    // ---------------------------------------------------------------------
+    if (req.query.action === 'image') {
+        try {
+            const col = parseInt(req.query.col) || 0;
+            const row = parseInt(req.query.row) || 0;
+            
+            console.log(`[Spritesheet-Proxy] BILD-AUFRUF DIREKT ÜBER REQUEST.DO! Spalte: ${col}, Reihe: ${row}`);
+            
+            const w = 16;
+            const h = 16;
+            const rowBytes = 2;
+            const chunks = [];
 
-        if (!fs.existsSync(spritesheetPath)) {
-            console.error(`[Spritesheet-Proxy] Bilddatei nicht gefunden unter: ${spritesheetPath}`);
-            return res.status(404).end();
-        }
+            const spritesheetPath = path.join(__dirname, 'public', '_spritesheet.png'); 
 
-        // 2. Berechne den genauen Pixel-Ausschnitt (Kachelgröße 16x16)
-        const extractX = col * w;
-        const extractY = row * h;
-
-        // 3. Bildausschnitt mit Sharp herausschneiden und als rohe RGBA-Bytes holen
-        const rawPixelBuffer = await sharp(spritesheetPath)
-            .extract({ left: extractX, top: extractY, width: w, height: h })
-            .ensureAlpha() // Garantiert, dass wir immer 4 Bytes (RGBA) pro Pixel haben
-            .raw()
-            .toBuffer();
-
-        // 4. Header für Gigaset vorbereiten (4 Bytes)
-        const header = Buffer.from([0x00, 0x10, 0x00, 0x10]); 
-        
-        // 5. Deine funktionierende Pixel-Schleife (für den schwarzen Screensaver):
-        for (let y = 0; y < h; y++) {
-            const rowBuffer = Buffer.alloc(rowBytes, 0);
-            for (let x = 0; x < w; x++) {
-                const idx = (y * w + x) * 4;
-                const r = rawPixelBuffer[idx];
-                const g = rawPixelBuffer[idx + 1];
-                const b = rawPixelBuffer[idx + 2];
-                const a = rawPixelBuffer[idx + 3];
-
-                // Wenn der Pixel vom Spritesheet REIN WEISS oder transparent ist -> Bit setzen (wird schwarz im Screensaver)
-                if (a < 30 || (r > 240 && g > 240 && b > 240)) {
-                    const byteIndex = Math.floor(x / 8);
-                    const bitIndex = x % 8;
-                    rowBuffer[byteIndex] |= (0x80 >> bitIndex);
-                }
+            if (!fs.existsSync(spritesheetPath)) {
+                console.error(`[Spritesheet-Proxy] Bilddatei nicht gefunden unter: ${spritesheetPath}`);
+                return res.status(404).end();
             }
-            chunks.push(rowBuffer);
-        }
 
-        // 6. Buffer zusammenbauen
-        const fntBuffer = Buffer.concat([header, ...chunks]);
-        
-        // 7. HTTP-Antwort senden (Abgestimmt auf das type="image/fnt" des <object> Tags)
-        res.writeHead(200, {
-            'Content-Type': 'image/fnt',
-            'Content-Length': fntBuffer.length,
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Connection': 'close' // Extrem wichtig für das Gigaset!
-        });
+            const extractX = col * w;
+            const extractY = row * h;
 
-        return res.end(fntBuffer);
+            const rawPixelBuffer = await sharp(spritesheetPath)
+                .extract({ left: extractX, top: extractY, width: w, height: h })
+                .ensureAlpha()
+                .raw()
+                .toBuffer();
 
-    } catch (error) {
-        console.error("[Spritesheet-Proxy] Schwerwiegender Fehler:", error.message);
-        if (!res.headersSent) {
-            res.status(500).end();
+            const header = Buffer.from([0x00, 0x10, 0x00, 0x10]); 
+            
+            for (let y = 0; y < h; y++) {
+                const rowBuffer = Buffer.alloc(rowBytes, 0);
+                for (let x = 0; x < w; x++) {
+                    const idx = (y * w + x) * 4;
+                    const r = rawPixelBuffer[idx];
+                    const g = rawPixelBuffer[idx + 1];
+                    const b = rawPixelBuffer[idx + 2];
+                    const a = rawPixelBuffer[idx + 3];
+
+                    if (a < 30 || (r > 240 && g > 240 && b > 240)) {
+                        const byteIndex = Math.floor(x / 8);
+                        const bitIndex = x % 8;
+                        rowBuffer[byteIndex] |= (0x80 >> bitIndex);
+                    }
+                }
+                chunks.push(rowBuffer);
+            }
+
+            const fntBuffer = Buffer.concat([header, ...chunks]);
+            
+            res.writeHead(200, {
+                'Content-Type': 'image/fnt',
+                'Content-Length': fntBuffer.length,
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Connection': 'close'
+            });
+            return res.end(fntBuffer);
+
+        } catch (error) {
+            console.error("[Spritesheet-Proxy] Fehler in request.do Image-Weiche:", error.message);
+            if (!res.headersSent) res.status(500).end();
+            return;
         }
     }
+
+    // ---------------------------------------------------------------------
+    // AB HIER FOLGT DEIN NORMALE XML-GENERIERUNG (Unverändert)
+    // ---------------------------------------------------------------------
+    const ua = req.headers['user-agent'] || ''; 
+
+    // --- AUTODISCOVERY START ---
+    if (ua && macRaw && hsid) {
+        let config = getConfig(); if (!config.gateways) config.gateways = {};
+        const parts = ua.replace(/_/g, ' ').split('/');
+        
+        let baseModel = (parts && parts[0]) ? parts[0].replace('Gigaset ', '').trim() : "GO-Box / N510";
+        let fwVersion = "---";
+        let hsModel = "";
+
+        if (parts && parts.length > 1) {
+            let secondPart = parts[1].replace(/\(/g, '').replace(/\)/g, '');
+            if (secondPart.includes(';')) {
+                const subParts = secondPart.split(';'); 
+                fwVersion = subParts[0] ? subParts[0].trim() : "---";
+                for (let sub of subParts) { 
+                    if (sub.includes('HS=')) hsModel = sub.replace('HS=', '').trim(); 
+                }
+            } else { 
+                fwVersion = secondPart.trim(); 
+            }
+        }
+
+        if (!hsModel) {
+            const modelMatch = ua.match(/Gigaset_([A-Za-z0-9]+)/);
+            if (modelMatch && modelMatch[1]) {
+                hsModel = `Gigaset ${modelMatch[1].replace('IP', '').trim()}`;
+            } else {
+                hsModel = `Mobilteil ${hsid}`;
+            }
+        } else if (!hsModel.startsWith('Gigaset')) {
+            hsModel = `Gigaset ${hsModel}`;
+        }
+
+        let changed = false;
+        if (!config.gateways[macClean]) { config.gateways[macClean] = { handsets: {} }; changed = true; }
+        
+        if (!config.gateways[macClean].handsets[hsid]) {
+            config.gateways[macClean].handsets[hsid] = { 
+                mode: "weather", 
+                city: "Mitteldachstetten", 
+                box_model: baseModel, 
+                box_fw: fwVersion, 
+                hs_model: hsModel 
+            };
+            changed = true;
+        } else {
+            let hs = config.gateways[macClean].handsets[hsid];
+            if (!hs.hs_model || hs.hs_model.startsWith('Mobilteil')) {
+                hs.hs_model = hsModel;
+                changed = true;
+            }
+            if (hs.box_model !== baseModel) { hs.box_model = baseModel; changed = true; }
+            if (hs.box_fw !== fwVersion) { hs.box_fw = fwVersion; changed = true; }
+        }
+
+        if (changed) {
+            saveConfig(config);
+            console.log(`[Sync] Gerätedaten via Screensaver aktualisiert für HS ${hsid}: ${hsModel}`);
+        }
+    }
+    // --- AUTODISCOVERY ENDE ---
+
+    let cityName = "WETTER";
+    let weatherArray = null;
+
+    try {
+        let config = getConfig();
+        if (config.gateways && config.gateways[macClean] && config.gateways[macClean].handsets[hsid]) {
+            cityName = config.gateways[macClean].handsets[hsid].city || "WETTER";
+        }
+
+        const cachePath = path.join(__dirname, 'WEB-INF', `cache_${macClean}.json`);
+        if (fs.existsSync(cachePath)) {
+            const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+            if (cacheData.handsets) {
+                const firstKey = Object.keys(cacheData.handsets)[0];
+                if (firstKey && cacheData.handsets[firstKey]) {
+                    weatherArray = cacheData.handsets[firstKey].weather || null;
+                    cityName = cacheData.handsets[firstKey].city || cityName;
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Fehler beim Verarbeiten des Wettercaches:", e);
+    }
+
+    const displayCity = cityName.replace(/ü/g, "UE").replace(/ä/g, "AE").replace(/ö/g, "OE").replace(/ß/g, "SS").toUpperCase();
+
+    res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.header('Pragma', 'no-cache');
+
+    let xml = `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta name="expires" content="1800" />
+    <title>${displayCity}</title>
+</head>
+<body bgcolor="#ffffff">`;
+
+    if (weatherArray && weatherArray.length > 0) {
+        const now = new Date();
+        
+        for (let d = 0; d < 3; d++) {
+            const targetDate = new Date(now);
+            targetDate.setDate(now.getDate() + d);
+            const targetStr = targetDate.toISOString().split('T')[0];
+            
+            let dayEntry = null;
+            let nightEntry = null;
+
+            for (let i = 0; i < weatherArray.length; i++) {
+                const e = weatherArray[i];
+                const ts = e.timestamp || '';
+                if (ts.startsWith(targetStr)) {
+                    if (ts.includes("T12:00")) dayEntry = e;
+                    if (ts.includes("T03:00")) nightEntry = e;
+                }
+            }
+
+            if (!dayEntry) {
+                dayEntry = weatherArray.find(e => (e.timestamp || '').startsWith(targetStr)) || null;
+            }
+
+            if (dayEntry) {
+                const tD = Math.round(dayEntry.temperature || 0);
+                const tN = nightEntry ? Math.round(nightEntry.temperature || (tD - 5)) : (tD - 5);
+                const cond = translateCondition(dayEntry.condition);
+                const label = getGermanDayLabel(targetDate.getDay(), d);
+
+                let coords = getWeatherCoords(dayEntry.condition);
+
+                const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+                const host = req.headers.host;
+
+                // --- NEU: HIER RUFEN WIR DIE BILD-AKTION DIREKT ÜBER DIE REQUEST.DO AUF ---
+                xml += `<p style="text-align:center;">
+    <b>${label}</b><br/>
+    <object data="${protocol}://${host}/info/request.do?action=image&amp;col=${coords.col}&amp;row=${coords.row}" type="image/fnt" width="16" height="16"></object><br/>
+    ${cond}&nbsp;${tD}°C/${tN}°C
+</p>`;
+            }
+        }
+    } else {
+        xml += `<p style="text-align:center;">Lade Daten...<br/>Bitte warten</p>`;
+    }
+
+    xml += `</body></html>`;
+    return res.send(xml);
 });
 // =========================================================================
 // 3. ORTSSUCHE & LISTENAUSWAHL (Abfang für beide URL-Varianten)
