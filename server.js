@@ -243,7 +243,7 @@ app.get('/info/request.do', (req, res) => {
 // =========================================================================
 // GIGASET SPRITESHEET PROXY (Binär-Korrektur)
 // =========================================================================
-app.get('/proxy/image.do', async (req, res) => {
+app.get('/proxy/image.do','/info/proxy/image.do', async (req, res) => {
     const col = parseInt(req.query.col) || 0;
     const row = parseInt(req.query.row) || 0;
     const COLS_TOTAL = 5;
