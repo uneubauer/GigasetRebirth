@@ -296,11 +296,32 @@ app.get('/info/request.do', async (req, res) => {
 
                 const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
                 const host = req.headers.host;
+if (weatherArray && weatherArray.length > 0) {
+        const now = new Date();
+        const targetStr = now.toISOString().split('T')[0];
+        let dayEntry = weatherArray.find(e => (e.timestamp || '').startsWith(targetStr)) || weatherArray[0];
 
+        if (dayEntry) {
+            const tD = Math.round(dayEntry.temperature || 0);
+            const cond = translateCondition(dayEntry.condition);
+
+            // Je nach Zustand wählen wir das passende Zeichen direkt aus
+            let icon = "☼"; // Standard: Sonne
+            const condLower = cond.toLowerCase();
+            
+            if (condLower.includes("wolk") || condLower.includes("nebel")) {
+                icon = "☁"; // Wolke
+            } else if (condLower.includes("regen") || condLower.includes("niesel") || condLower.includes("schauer")) {
+                icon = "☔"; // Regenschirm/Regen
+            } else if (condLower.includes("schnee")) {
+                icon = "❄"; // Schneeflocke
+            } else if (condLower.includes("gewitter")) {
+                icon = "⚡"; // Blitz
+            }
                 // --- NEU: HIER RUFEN WIR DIE BILD-AKTION DIREKT ÜBER DIE REQUEST.DO AUF ---
                 xml += `<p style="text-align:center;">
     <b>${label}</b><br/>
-     &#x263C;${cond}&nbsp;${tD}°C/${tN}°C
+     ${icon}${cond}&nbsp;${tD}°C/${tN}°C
 </p>`;
             }
         }
