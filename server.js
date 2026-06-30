@@ -465,7 +465,7 @@ app.get('/info/request.do', async (req, res) => {
                 xml += `<p style="text-align:center;">
     <b>${label}</b><br/>
     <object data="${protocol}://${host}/info/request.do?action=image&amp;col=${coords.col}&amp;row=${coords.row}" type="image/fnt" width="16" height="16"></object><br/>
-    ${cond}&nbsp;${tD}°C/${tN}°C
+    ${cond}&#x263C;&nbsp;${tD}°C/${tN}°C
 </p>`;
             }
         }
