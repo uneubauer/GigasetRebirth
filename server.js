@@ -243,11 +243,16 @@ app.get('/info/request.do', (req, res) => {
 // =========================================================================
 // GIGASET SPRITESHEET PROXY (Binär-Korrektur)
 // =========================================================================
-app.get('/proxy/image.do','/info/proxy/image.do', async (req, res) => {
+// Ändere den Routen-Kopf so ab, dass er BEIDE Pfade matcht:
+app.get(['/proxy/image.do', '/info/proxy/image.do'], async (req, res) => {
     const col = parseInt(req.query.col) || 0;
     const row = parseInt(req.query.row) || 0;
+    
+    console.log(`[Spritesheet-Proxy] Aufruf empfangen - Spalte: ${col}, Reihe: ${row}`);
+    
     const COLS_TOTAL = 5;
     const ROWS_TOTAL = 4;
+   
     
     const spritesheetPath = path.join(__dirname, 'public', '_spritesheet.png');
 
