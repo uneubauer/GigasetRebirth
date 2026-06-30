@@ -296,6 +296,17 @@ app.get('/info/request.do', async (req, res) => {
                 const cond = translateCondition(dayEntry.condition);
                 const label = getGermanDayLabel(targetDate.getDay(), d);
 
+                
+                // HIER IST DIE EXAKTE LOGIK:
+                let label = "";
+                if (d === 0) {
+                    label = "HEUTE";
+                } else if (d === 1) {
+                    label = tageNamen[targetDate.getDay()];
+                } else {
+                    // Ab dem dritten Tag (d = 2) nehmen wir den echten Namen aus dem Array
+                    label = tageNamen[targetDate.getDay()];
+                }
                 // Unicode-Icon ermitteln
                 let icon = "☼"; 
                 const condLower = cond.toLowerCase();
@@ -312,7 +323,7 @@ app.get('/info/request.do', async (req, res) => {
 
                 // In den XML-String einfügen
                 xml += `<p style="text-align:center;">
-    <b>${label}</b>${cond}&nbsp;${tD}°C/${tN}°C</br>
+    ${label}${cond}&nbsp;${tD}°C/${tN}°C
 </p>`;
             }
         }
