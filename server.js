@@ -302,7 +302,7 @@ app.get('/info/request.do', async (req, res) => {
                 if (d === 0) {
                     label = "HEUTE";
                 } else if (d === 1) {
-                    label = tageNamen[targetDate.getDay()];
+                    label = "MORGEN";
                 } else {
                     // Ab dem dritten Tag (d = 2) nehmen wir den echten Namen aus dem Array
                     label = tageNamen[targetDate.getDay()];
