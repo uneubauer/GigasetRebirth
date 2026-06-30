@@ -245,7 +245,7 @@ app.get('/info/request.do', async (req, res) => {
                     label = tageNamen[targetDate.getDay()];
                 }
                 xml += `<p style="text-align:center;">
-    <b>${label}</b><br/>
+    ${label}<br/>
     ${cond}&nbsp;${tD}°C/${tN}°C
 </p>`;
             }
