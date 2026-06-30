@@ -224,7 +224,7 @@ app.get('/info/request.do', (req, res) => {
                 let coords = getWeatherCoords(dayEntry.condition);
 
                 // --- NEU: ICON IN JEDER ZEILE EINBINDEN ---
-                xml += `<p>
+                xml += `<p style="text-align:center;">
     <b>${label}</b><br/>
     <object data="/info/proxy/image.do?col=${coords.col}&amp;row=${coords.row}" type="image/fnt" width="16" height="16"></object><br/>
     ${cond}&nbsp;${tD}°C/${tN}°C
