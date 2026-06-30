@@ -464,8 +464,7 @@ app.get('/info/request.do', async (req, res) => {
                 // --- NEU: HIER RUFEN WIR DIE BILD-AKTION DIREKT ÜBER DIE REQUEST.DO AUF ---
                 xml += `<p style="text-align:center;">
     <b>${label}</b><br/>
-    <object data="${protocol}://${host}/info/request.do?action=image&amp;col=${coords.col}&amp;row=${coords.row}" type="image/fnt" width="16" height="16"></object><br/>
-    ${cond}&#x263C;&nbsp;${tD}°C/${tN}°C
+    <span style="font-size:large;">&#x263C;</span><br/> ${cond}&nbsp;${tD}°C/${tN}°C
 </p>`;
             }
         }
