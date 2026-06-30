@@ -254,20 +254,34 @@ app.get('/info/image.do', async (req, res) => {
         
         console.log(`[Spritesheet-Proxy] BILD-AUFRUF ERFOLGREICH! Spalte: ${col}, Reihe: ${row}`);
         
-        // --- HIER DEIN BESTEHENDER SHARP-CODE ---
-        // (Falls du ihn komplett überschrieben hast, hier ist die Logik inklusive Buffer-Erstellung):
-        
-        // 1. Header für Gigaset vorbereiten (4 Bytes)
-        const header = Buffer.from([0x00, 0x10, 0x00, 0x10]); 
         const w = 16;
         const h = 16;
         const rowBytes = 2;
         const chunks = [];
 
-        // 2. Bildausschnitt mit Sharp holen (Hier greift deine bestehende Logik)
-        // const rawPixelBuffer = ... (dein Sharp-Buffer-Aufruf für das Spritesheet)
+        // 1. Pfad zu deinem Spritesheet (Passe 'spritesheet.png' ggf. an deinen echten Dateinamen an!)
+        const spritesheetPath = path.join(__dirname, 'public', 'spritesheet.png'); 
+
+        if (!fs.existsSync(spritesheetPath)) {
+            console.error(`[Spritesheet-Proxy] Bilddatei nicht gefunden unter: ${spritesheetPath}`);
+            return res.status(404).end();
+        }
+
+        // 2. Berechne den genauen Pixel-Ausschnitt (Kachelgröße 16x16)
+        const extractX = col * w;
+        const extractY = row * h;
+
+        // 3. Bildausschnitt mit Sharp herausschneiden und als rohe RGBA-Bytes holen
+        const rawPixelBuffer = await sharp(spritesheetPath)
+            .extract({ left: extractX, top: extractY, width: w, height: h })
+            .ensureAlpha() // Garantiert, dass wir immer 4 Bytes (RGBA) pro Pixel haben
+            .raw()
+            .toBuffer();
+
+        // 4. Header für Gigaset vorbereiten (4 Bytes)
+        const header = Buffer.from([0x00, 0x10, 0x00, 0x10]); 
         
-        // 3. Deine funktionierende Pixel-Schleife (für den schwarzen Screensaver):
+        // 5. Deine funktionierende Pixel-Schleife (für den schwarzen Screensaver):
         for (let y = 0; y < h; y++) {
             const rowBuffer = Buffer.alloc(rowBytes, 0);
             for (let x = 0; x < w; x++) {
@@ -287,26 +301,26 @@ app.get('/info/image.do', async (req, res) => {
             chunks.push(rowBuffer);
         }
 
-        // 4. Buffer zusammenbauen
+        // 6. Buffer zusammenbauen
         const fntBuffer = Buffer.concat([header, ...chunks]);
         
-        // 5. HTTP-Antwort senden
+        // 7. HTTP-Antwort senden (Abgestimmt auf das type="image/fnt" des <object> Tags)
         res.writeHead(200, {
             'Content-Type': 'image/fnt',
             'Content-Length': fntBuffer.length,
             'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Connection': 'close'
+            'Connection': 'close' // Extrem wichtig für das Gigaset!
         });
 
         return res.end(fntBuffer);
 
     } catch (error) {
-        console.error("[Spritesheet-Proxy] Fehler:", error.message);
+        console.error("[Spritesheet-Proxy] Schwerwiegender Fehler:", error.message);
         if (!res.headersSent) {
             res.status(500).end();
         }
     }
-}); // <-- Hier schließt die Route jetzt absolut sauber!
+});
 // =========================================================================
 // 3. ORTSSUCHE & LISTENAUSWAHL (Abfang für beide URL-Varianten)
 // =========================================================================
