@@ -83,18 +83,21 @@ app.get('/info/menu', (req, res) => { res.redirect(`/info/menu.jsp?mac=${req.que
 // =========================================================================
 // SCREENSAVER-EINSTIEG / WEATHER DATA & IMAGE PROXY (request.do)
 // =========================================================================
+// =========================================================================
+// SCREENSAVER-EINSTIEG / WEATHER DATA & IMAGE PROXY (request.do)
+// =========================================================================
 app.get('/info/request.do', async (req, res) => {
     const macRaw = req.query.mac || ''; 
     const hsid = req.query.handsetid || '1';
     const macClean = normMac(macRaw);
 
     // ---------------------------------------------------------------------
-    // NEU: WEICHENSTELLUNG - WENN EIN BILD ANGEFORDERT WIRD
+    // WEICHENSTELLUNG - WENN EIN BILD ANGEFORDERT WIRD (Bleibt für Menü/Fallback aktiv)
     // ---------------------------------------------------------------------
     if (req.query.action === 'image') {
         try {
-            const col = parseInt(req.query.col) || 0;
-            const row = parseInt(req.query.row) || 0;
+            const col = parseInt(req.query.col || req.query['amp;col']) || 0;
+            const row = parseInt(req.query.row || req.query['amp;row']) || 0;
             
             console.log(`[Spritesheet-Proxy] BILD-AUFRUF DIREKT ÜBER REQUEST.DO! Spalte: ${col}, Reihe: ${row}`);
             
@@ -157,7 +160,7 @@ app.get('/info/request.do', async (req, res) => {
     }
 
     // ---------------------------------------------------------------------
-    // AB HIER FOLGT DEIN NORMALE XML-GENERIERUNG (Unverändert)
+    // AB HIER FOLGT DIE NORMALE XML-GENERIERUNG
     // ---------------------------------------------------------------------
     const ua = req.headers['user-agent'] || ''; 
 
@@ -265,6 +268,7 @@ app.get('/info/request.do', async (req, res) => {
     if (weatherArray && weatherArray.length > 0) {
         const now = new Date();
         
+        // Die 3-Tage Schleife sauber durchlaufen
         for (let d = 0; d < 3; d++) {
             const targetDate = new Date(now);
             targetDate.setDate(now.getDate() + d);
@@ -292,36 +296,24 @@ app.get('/info/request.do', async (req, res) => {
                 const cond = translateCondition(dayEntry.condition);
                 const label = getGermanDayLabel(targetDate.getDay(), d);
 
-                let coords = getWeatherCoords(dayEntry.condition);
+                // Unicode-Icon ermitteln
+                let icon = "☼"; 
+                const condLower = cond.toLowerCase();
+                
+                if (condLower.includes("wolk") || condLower.includes("nebel")) {
+                    icon = "☁"; 
+                } else if (condLower.includes("regen") || condLower.includes("niesel") || condLower.includes("schauer")) {
+                    icon = "☔"; 
+                } else if (condLower.includes("schnee")) {
+                    icon = "❄"; 
+                } else if (condLower.includes("gewitter")) {
+                    icon = "⚡"; 
+                }
 
-                const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
-                const host = req.headers.host;
-if (weatherArray && weatherArray.length > 0) {
-        const now = new Date();
-        const targetStr = now.toISOString().split('T')[0];
-        let dayEntry = weatherArray.find(e => (e.timestamp || '').startsWith(targetStr)) || weatherArray[0];
-
-        if (dayEntry) {
-            const tD = Math.round(dayEntry.temperature || 0);
-            const cond = translateCondition(dayEntry.condition);
-
-            // Je nach Zustand wählen wir das passende Zeichen direkt aus
-            let icon = "☼"; // Standard: Sonne
-            const condLower = cond.toLowerCase();
-            
-            if (condLower.includes("wolk") || condLower.includes("nebel")) {
-                icon = "☁"; // Wolke
-            } else if (condLower.includes("regen") || condLower.includes("niesel") || condLower.includes("schauer")) {
-                icon = "☔"; // Regenschirm/Regen
-            } else if (condLower.includes("schnee")) {
-                icon = "❄"; // Schneeflocke
-            } else if (condLower.includes("gewitter")) {
-                icon = "⚡"; // Blitz
-            }
-                // --- NEU: HIER RUFEN WIR DIE BILD-AKTION DIREKT ÜBER DIE REQUEST.DO AUF ---
+                // In den XML-String einfügen
                 xml += `<p style="text-align:center;">
     <b>${label}</b><br/>
-     ${icon}${cond}&nbsp;${tD}°C/${tN}°C
+    ${icon} ${cond}&nbsp;${tD}°C/${tN}°C
 </p>`;
             }
         }
