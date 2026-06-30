@@ -464,7 +464,7 @@ app.get('/info/request.do', async (req, res) => {
                 // --- NEU: HIER RUFEN WIR DIE BILD-AKTION DIREKT ÜBER DIE REQUEST.DO AUF ---
                 xml += `<p style="text-align:center;">
     <b>${label}</b><br/>
-    <span style="font-size:large;">&#x263C;</span><br/> ${cond}&nbsp;${tD}°C/${tN}°C
+     ${cond}&nbsp;${tD}°C/${tN}°C
 </p>`;
             }
         }
