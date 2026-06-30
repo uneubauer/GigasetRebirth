@@ -227,10 +227,10 @@ app.get('/info/request.do', (req, res) => {
 const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
 const host = req.headers.host; // Liefert z.B. "info.gigaset.net" oder die IP inklusive Port
 
-// 2. Ändere die Zeile in deiner Schleife um, sodass sie die absolute URL generiert:
+// --- HIER RUFEN WIR DIE BILD-AKTION DIREKT ÜBER DIE REQUEST.DO AUF ---
 xml += `<p style="text-align:center;">
     <b>${label}</b><br/>
-    <object data="${protocol}://${host}/info/image.do?col=${coords.col}&amp;row=${coords.row}" type="image/fnt" width="16" height="16"></object><br/>
+    <object data="${protocol}://${host}/info/request.do?action=image&amp;col=${coords.col}&amp;row=${coords.row}" type="image/fnt" width="16" height="16"></object><br/>
     ${cond}&nbsp;${tD}°C/${tN}°C
 </p>`;
             }
