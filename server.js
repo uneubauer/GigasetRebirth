@@ -164,7 +164,7 @@ app.get('/info/request.do', async (req, res) => {
     // ---------------------------------------------------------------------
     const ua = req.headers['user-agent'] || ''; 
 
-    // --- AUTODISCOVERY ENDE ---
+   // --- AUTODISCOVERY ENDE ---
 
     let cityName = "WETTER";
     let weatherArray = null;
@@ -192,31 +192,22 @@ app.get('/info/request.do', async (req, res) => {
 
     const displayCity = cityName.replace(/ü/g, "UE").replace(/ä/g, "AE").replace(/ö/g, "OE").replace(/ß/g, "SS").toUpperCase();
 
-    // Cache-Verbot für das Mobilteil verschärfen
     res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
-    res.header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.header('Pragma', 'no-cache');
-    res.header('Expires', '0');
 
     let xml = `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-    <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate" />
-    <meta http-equiv="pragma" content="no-cache" />
-    <meta name="expires" content="0" />
+    <meta name="expires" content="1800" />
     <title>${displayCity}</title>
 </head>
 <body bgcolor="#ffffff">`;
 
     if (weatherArray && weatherArray.length > 0) {
         const now = new Date();
-        const tageNamen = ["SONNTAG", "MONTAG", "DIENSTAG", "MITTWOCH", "DONNERSTAG", "FREITAG", "SAMSTAG"];
         
-        // Kompakter Sammelabsatz für das Mobilteil
-        xml += `<p style="text-align:center;">`;
-
-        // Die 3-Tage Schleife sauber durchlaufen
         for (let d = 0; d < 3; d++) {
             const targetDate = new Date(now);
             targetDate.setDate(now.getDate() + d);
@@ -242,37 +233,14 @@ app.get('/info/request.do', async (req, res) => {
                 const tD = Math.round(dayEntry.temperature || 0);
                 const tN = nightEntry ? Math.round(nightEntry.temperature || (tD - 5)) : (tD - 5);
                 const cond = translateCondition(dayEntry.condition);
-                
-                // Wochentags-Logik (Nur eine einzige Deklaration!)
-                let label = "";
-                if (d === 0) {
-                    label = "HEUTE";
-                } else if (d === 1) {
-                    label = "MORGEN";
-                } else {
-                    label = tageNamen[targetDate.getDay()];
-                }
+                const label = getGermanDayLabel(targetDate.getDay(), d);
 
-                // Robuste ASCII-Icons (Verhindert das "?" auf dem Mobilteil)
-                let icon = "[*]"; 
-                const condLower = cond.toLowerCase();
-                
-                if (condLower.includes("wolk") || condLower.includes("nebel") || condLower.includes("bedeckt")) {
-                    icon = "(oo)"; 
-                } else if (condLower.includes("regen") || condLower.includes("niesel") || condLower.includes("schauer")) {
-                    icon = "///"; 
-                } else if (condLower.includes("schnee")) {
-                    icon = "***"; 
-                } else if (condLower.includes("gewitter")) {
-                    icon = "/\\/"; 
-                }
-
-                // Kompakter Zeilenaufbau mit Umbruch
-                xml += '${label}${cond}&nbsp;${tD}/${tN}°C</br>';
+                xml += `<p style="text-align:center;">
+    <b>${label}</b><br/>
+    ${cond}&nbsp;${tD}°C/${tN}°C
+</p>`;
             }
         }
-        
-        xml += `</p>`;
     } else {
         xml += `<p style="text-align:center;">Lade Daten...<br/>Bitte warten</p>`;
     }
