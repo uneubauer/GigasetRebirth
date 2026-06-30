@@ -268,7 +268,7 @@ app.get('/info/request.do', async (req, res) => {
                 }
 
                 // Kompakter Zeilenaufbau mit Umbruch
-                xml += `<b>${label}:</b>${tD}/${tN}°C<br/>`;
+                xml += `<b>${label}:</b>${tD}/${tN}°C`;
             }
         }
         
