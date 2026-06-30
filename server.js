@@ -207,6 +207,7 @@ app.get('/info/request.do', async (req, res) => {
 
     if (weatherArray && weatherArray.length > 0) {
         const now = new Date();
+        const tageNamen = ["SONNTAG", "MONTAG", "DIENSTAG", "MITTWOCH", "DONNERSTAG", "FREITAG", "SAMSTAG"];
         
         for (let d = 0; d < 3; d++) {
             const targetDate = new Date(now);
@@ -233,8 +234,16 @@ app.get('/info/request.do', async (req, res) => {
                 const tD = Math.round(dayEntry.temperature || 0);
                 const tN = nightEntry ? Math.round(nightEntry.temperature || (tD - 5)) : (tD - 5);
                 const cond = translateCondition(dayEntry.condition);
-                const label = getGermanDayLabel(targetDate.getDay(), d);
-
+                
+                // Wochentag direkt hier ermitteln
+                let label = "";
+                if (d === 0) {
+                    label = "HEUTE";
+                } else if (d === 1) {
+                    label = "MORGEN";
+                } else {
+                    label = tageNamen[targetDate.getDay()];
+                }
                 xml += `<p style="text-align:center;">
     <b>${label}</b><br/>
     ${cond}&nbsp;${tD}°C/${tN}°C
