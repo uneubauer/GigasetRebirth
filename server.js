@@ -159,6 +159,11 @@ app.get('/info/request.do', async (req, res) => {
         }
     }
 
+    // ---------------------------------------------------------------------
+    // AB HIER FOLGT DIE NORMALE XML-GENERIERUNG
+    // ---------------------------------------------------------------------
+    const ua = req.headers['user-agent'] || ''; 
+
     // --- AUTODISCOVERY ENDE ---
 
     let cityName = "WETTER";
