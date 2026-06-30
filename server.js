@@ -223,10 +223,14 @@ app.get('/info/request.do', (req, res) => {
                 // --- NEU: RASTER-KOORDINATEN ERMITTELN ---
                 let coords = getWeatherCoords(dayEntry.condition);
 
-                // --- NEU: ICON IN JEDER ZEILE EINBINDEN ---
-                xml += `<p style="text-align:center;">
+                // 1. Hole dir ganz oben in der Route (wo req übergeben wird) die aktuelle Domain:
+const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+const host = req.headers.host; // Liefert z.B. "info.gigaset.net" oder die IP inklusive Port
+
+// 2. Ändere die Zeile in deiner Schleife um, sodass sie die absolute URL generiert:
+xml += `<p style="text-align:center;">
     <b>${label}</b><br/>
-    <object data="/info/proxy/image.do?col=${coords.col}&amp;row=${coords.row}" type="image/fnt" width="16" height="16"></object><br/>
+    <object data="${protocol}://${host}/info/image.do?col=${coords.col}&amp;row=${coords.row}" type="image/fnt" width="16" height="16"></object><br/>
     ${cond}&nbsp;${tD}°C/${tN}°C
 </p>`;
             }
