@@ -260,7 +260,7 @@ app.get('/info/image.do', async (req, res) => {
         const chunks = [];
 
         // 1. Pfad zu deinem Spritesheet (Passe 'spritesheet.png' ggf. an deinen echten Dateinamen an!)
-        const spritesheetPath = path.join(__dirname, 'public', 'spritesheet.png'); 
+        const spritesheetPath = path.join(__dirname, 'public', '_spritesheet.png'); 
 
         if (!fs.existsSync(spritesheetPath)) {
             console.error(`[Spritesheet-Proxy] Bilddatei nicht gefunden unter: ${spritesheetPath}`);
