@@ -312,8 +312,7 @@ app.get('/info/request.do', async (req, res) => {
 
                 // In den XML-String einfügen
                 xml += `<p style="text-align:center;">
-    <b>${label}</b><br/>
-     ${cond}&nbsp;${tD}°C/${tN}°C
+    <b>${label}</b>${cond}&nbsp;${tD}°C/${tN}°C</br>
 </p>`;
             }
         }
