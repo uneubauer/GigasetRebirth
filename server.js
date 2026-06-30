@@ -159,71 +159,6 @@ app.get('/info/request.do', async (req, res) => {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // AB HIER FOLGT DIE NORMALE XML-GENERIERUNG
-    // ---------------------------------------------------------------------
-    const ua = req.headers['user-agent'] || ''; 
-
-    // --- AUTODISCOVERY START ---
-    if (ua && macRaw && hsid) {
-        let config = getConfig(); if (!config.gateways) config.gateways = {};
-        const parts = ua.replace(/_/g, ' ').split('/');
-        
-        let baseModel = (parts && parts[0]) ? parts[0].replace('Gigaset ', '').trim() : "GO-Box / N510";
-        let fwVersion = "---";
-        let hsModel = "";
-
-        if (parts && parts.length > 1) {
-            let secondPart = parts[1].replace(/\(/g, '').replace(/\)/g, '');
-            if (secondPart.includes(';')) {
-                const subParts = secondPart.split(';'); 
-                fwVersion = subParts[0] ? subParts[0].trim() : "---";
-                for (let sub of subParts) { 
-                    if (sub.includes('HS=')) hsModel = sub.replace('HS=', '').trim(); 
-                }
-            } else { 
-                fwVersion = secondPart.trim(); 
-            }
-        }
-
-        if (!hsModel) {
-            const modelMatch = ua.match(/Gigaset_([A-Za-z0-9]+)/);
-            if (modelMatch && modelMatch[1]) {
-                hsModel = `Gigaset ${modelMatch[1].replace('IP', '').trim()}`;
-            } else {
-                hsModel = `Mobilteil ${hsid}`;
-            }
-        } else if (!hsModel.startsWith('Gigaset')) {
-            hsModel = `Gigaset ${hsModel}`;
-        }
-
-        let changed = false;
-        if (!config.gateways[macClean]) { config.gateways[macClean] = { handsets: {} }; changed = true; }
-        
-        if (!config.gateways[macClean].handsets[hsid]) {
-            config.gateways[macClean].handsets[hsid] = { 
-                mode: "weather", 
-                city: "Mitteldachstetten", 
-                box_model: baseModel, 
-                box_fw: fwVersion, 
-                hs_model: hsModel 
-            };
-            changed = true;
-        } else {
-            let hs = config.gateways[macClean].handsets[hsid];
-            if (!hs.hs_model || hs.hs_model.startsWith('Mobilteil')) {
-                hs.hs_model = hsModel;
-                changed = true;
-            }
-            if (hs.box_model !== baseModel) { hs.box_model = baseModel; changed = true; }
-            if (hs.box_fw !== fwVersion) { hs.box_fw = fwVersion; changed = true; }
-        }
-
-        if (changed) {
-            saveConfig(config);
-            console.log(`[Sync] Gerätedaten via Screensaver aktualisiert für HS ${hsid}: ${hsModel}`);
-        }
-    }
     // --- AUTODISCOVERY ENDE ---
 
     let cityName = "WETTER";
@@ -252,22 +187,30 @@ app.get('/info/request.do', async (req, res) => {
 
     const displayCity = cityName.replace(/ü/g, "UE").replace(/ä/g, "AE").replace(/ö/g, "OE").replace(/ß/g, "SS").toUpperCase();
 
+    // Cache-Verbot für das Mobilteil verschärfen
     res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
-    res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
     res.header('Pragma', 'no-cache');
+    res.header('Expires', '0');
 
     let xml = `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
 <head>
-    <meta name="expires" content="1800" />
+    <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="pragma" content="no-cache" />
+    <meta name="expires" content="0" />
     <title>${displayCity}</title>
 </head>
 <body bgcolor="#ffffff">`;
 
     if (weatherArray && weatherArray.length > 0) {
         const now = new Date();
+        const tageNamen = ["SONNTAG", "MONTAG", "DIENSTAG", "MITTWOCH", "DONNERSTAG", "FREITAG", "SAMSTAG"];
         
+        // Kompakter Sammelabsatz für das Mobilteil
+        xml += `<p style="text-align:center;">`;
+
         // Die 3-Tage Schleife sauber durchlaufen
         for (let d = 0; d < 3; d++) {
             const targetDate = new Date(now);
@@ -294,39 +237,37 @@ app.get('/info/request.do', async (req, res) => {
                 const tD = Math.round(dayEntry.temperature || 0);
                 const tN = nightEntry ? Math.round(nightEntry.temperature || (tD - 5)) : (tD - 5);
                 const cond = translateCondition(dayEntry.condition);
-                const label = getGermanDayLabel(targetDate.getDay(), d);
-
                 
-                // HIER IST DIE EXAKTE LOGIK:
+                // Wochentags-Logik (Nur eine einzige Deklaration!)
                 let label = "";
                 if (d === 0) {
                     label = "HEUTE";
                 } else if (d === 1) {
                     label = "MORGEN";
                 } else {
-                    // Ab dem dritten Tag (d = 2) nehmen wir den echten Namen aus dem Array
                     label = tageNamen[targetDate.getDay()];
                 }
-                // Unicode-Icon ermitteln
-                let icon = "☼"; 
+
+                // Robuste ASCII-Icons (Verhindert das "?" auf dem Mobilteil)
+                let icon = "[*]"; 
                 const condLower = cond.toLowerCase();
                 
-                if (condLower.includes("wolk") || condLower.includes("nebel")) {
-                    icon = "☁"; 
+                if (condLower.includes("wolk") || condLower.includes("nebel") || condLower.includes("bedeckt")) {
+                    icon = "(oo)"; 
                 } else if (condLower.includes("regen") || condLower.includes("niesel") || condLower.includes("schauer")) {
-                    icon = "☔"; 
+                    icon = "///"; 
                 } else if (condLower.includes("schnee")) {
-                    icon = "❄"; 
+                    icon = "***"; 
                 } else if (condLower.includes("gewitter")) {
-                    icon = "⚡"; 
+                    icon = "/\\/"; 
                 }
 
-                // In den XML-String einfügen
-                xml += `<p style="text-align:center;">
-    ${label}${cond}&nbsp;${tD}°C/${tN}°C
-</p>`;
+                // Kompakter Zeilenaufbau mit Umbruch
+                xml += `<b>${label}:</b> ${icon} ${tD}/${tN}°C<br/>`;
             }
         }
+        
+        xml += `</p>`;
     } else {
         xml += `<p style="text-align:center;">Lade Daten...<br/>Bitte warten</p>`;
     }
