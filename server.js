@@ -146,24 +146,59 @@ app.get('/info/request.do', async (req, res) => {
     const macRaw = req.query.mac || ''; 
     const hsid = req.query.handsetid || '1';
     const macClean = normMac(macRaw);
-const userAgent = req.headers['user-agent'] || '';
+    const userAgent = req.headers['user-agent'] || '';
+
+    // ---------------------------------------------------------------------
+    // 1. HARDWARE-ERKENNUNG & AUTOMATISCHE REGISTRIERUNG (AUTODISCOVERY)
+    // ---------------------------------------------------------------------
     if (macClean && macClean !== "UNKNOWN" && hsid) {
         let config = getConfig();
-        if (config.gateways && config.gateways[macClean] && config.gateways[macClean].handsets && config.gateways[macClean].handsets[hsid]) {
-            let changed = false;
-            if (userAgent.includes('Gigaset')) {
-                const uaParts = userAgent.split(' ');
-                if (uaParts[0] && uaParts[0].includes('/')) {
-                    const [rawBoxModel, boxFw] = uaParts[0].split('/');
-                    const cleanBoxModel = rawBoxModel.replace(/_/g, ' ');
-                    if (config.gateways[macClean].handsets[hsid].box_model !== cleanBoxModel) { config.gateways[macClean].handsets[hsid].box_model = cleanBoxModel; changed = true; }
-                    if (config.gateways[macClean].handsets[hsid].box_fw !== boxFw) { config.gateways[macClean].handsets[hsid].box_fw = boxFw; changed = true; }
+        let changed = false;
+
+        if (!config.gateways) { config.gateways = {}; changed = true; }
+        if (!config.gateways[macClean]) { config.gateways[macClean] = { handsets: {} }; changed = true; }
+        
+        // Falls das Mobilteil komplett neu ist -> Mit Standardwerten anlegen
+        if (!config.gateways[macClean].handsets[hsid]) {
+            console.log(`[Autodiscovery Screensaver] Neues Mobilteil registriert: MAC ${macClean}, HS ${hsid}`);
+            config.gateways[macClean].handsets[hsid] = {
+                city: "Oberdachstetten", // Standard-Fallback direkt vor Ort
+                mode: "weather",
+                lat: "49.41", 
+                lon: "10.42",
+                hs_model: `Mobilteil ${hsid}`,
+                box_model: "",
+                box_fw: ""
+            };
+            changed = true;
+        }
+
+        // Firmware & Box-Modell aus dem User-Agent ziehen (Egal ob neu oder alt!)
+        if (userAgent.includes('Gigaset')) {
+            const uaParts = userAgent.split(' ');
+            if (uaParts[0] && uaParts[0].includes('/')) {
+                const [rawBoxModel, boxFw] = uaParts[0].split('/');
+                const cleanBoxModel = rawBoxModel.replace(/_/g, ' ');
+                
+                if (config.gateways[macClean].handsets[hsid].box_model !== cleanBoxModel) { 
+                    config.gateways[macClean].handsets[hsid].box_model = cleanBoxModel; 
+                    changed = true; 
+                }
+                if (config.gateways[macClean].handsets[hsid].box_fw !== boxFw) { 
+                    config.gateways[macClean].handsets[hsid].box_fw = boxFw; 
+                    changed = true; 
                 }
             }
-            if (changed) saveConfig(config);
+        }
+
+        if (changed) {
+            saveConfig(config);
         }
     }
-    // BILD-WEICHE (action=image) - Bleibt unverändert für das Menü
+
+    // ---------------------------------------------------------------------
+    // 2. BILD-WEICHE (action=image) - Unverändert
+    // ---------------------------------------------------------------------
     if (req.query.action === 'image') {
         try {
             const col = parseInt(req.query.col || req.query['amp;col']) || 0;
@@ -196,17 +231,17 @@ const userAgent = req.headers['user-agent'] || '';
         }
     }
 
-    // XML-GENERIERUNG FÜR REINES WETTER
+    // ---------------------------------------------------------------------
+    // 3. XML-GENERIERUNG & CACHE-CHECK
+    // ---------------------------------------------------------------------
     let cityName = "WETTER";
     let weatherArray = null;
     let config = getConfig();
 
-    // 1. Suche nach den konfigurierten Daten für diese spezifische ID
     if (config.gateways && config.gateways[macClean] && config.gateways[macClean].handsets && config.gateways[macClean].handsets[hsid]) {
         cityName = config.gateways[macClean].handsets[hsid].city || "WETTER";
     }
 
-    // 2. Versuche den Cache zu laden
     const cachePath = path.join(webInfDir, `cache_${macClean}.json`);
     if (fs.existsSync(cachePath)) {
         try {
@@ -215,7 +250,6 @@ const userAgent = req.headers['user-agent'] || '';
                 weatherArray = cacheData.handsets[hsid].weather || null;
                 cityName = cacheData.handsets[hsid].city || cityName;
             } else if (cacheData.handsets) {
-                // Fallback: Wenn unter der langen ID kein Cache da ist, nimm das erste verfügbare Mobilteil aus dem Cache
                 const firstKey = Object.keys(cacheData.handsets)[0];
                 if (firstKey && cacheData.handsets[firstKey]) {
                     weatherArray = cacheData.handsets[firstKey].weather || null;
@@ -227,11 +261,13 @@ const userAgent = req.headers['user-agent'] || '';
         }
     }
 
-    // 3. NEU: LIVE-FETCH FALLBACK, falls die Config existiert, aber noch kein Cache gebaut wurde!
+    // ---------------------------------------------------------------------
+    // 4. LIVE-FETCH FALLBACK (Trifft jetzt sofort beim ersten Aufruf)
+    // ---------------------------------------------------------------------
     if (!weatherArray && config.gateways && config.gateways[macClean] && config.gateways[macClean].handsets && config.gateways[macClean].handsets[hsid]) {
         const hs = config.gateways[macClean].handsets[hsid];
         if (hs.lat && hs.lon) {
-            console.log(`[Live-Fetch] Kein Cache für HS ${hsid}. Rufe Wetter direkt von BrightSky ab...`);
+            console.log(`[Live-Fetch] Hole Wetter direkt für ${cityName} (HS: ${hsid})...`);
             const today = new Date().toISOString().split('T')[0];
             const endDate = new Date(); endDate.setDate(endDate.getDate() + 3);
             const end = endDate.toISOString().split('T')[0];
@@ -243,7 +279,6 @@ const userAgent = req.headers['user-agent'] || '';
                     const weatherData = await response.json();
                     weatherArray = weatherData.weather || null;
                     
-                    // Schreibt das Ergebnis direkt in den Cache, damit beim nächsten Tick Ruhe ist
                     const cacheRoot = fs.existsSync(cachePath) ? JSON.parse(fs.readFileSync(cachePath, 'utf8')) : { handsets: {}, updated: "" };
                     cacheRoot.updated = new Date().toISOString();
                     cacheRoot.handsets[hsid] = { city: cityName, lat: hs.lat, lon: hs.lon, weather: weatherArray || [] };
@@ -310,7 +345,6 @@ const userAgent = req.headers['user-agent'] || '';
     xml += `</body></html>`;
     return res.send(xml);
 });
-
 // =========================================================================
 // 3. ORTSSUCHE & LISTENAUSWAHL
 // =========================================================================
