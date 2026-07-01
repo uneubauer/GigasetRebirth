@@ -102,24 +102,42 @@ function saveConfig(config) {
     }
 }
 
-// =========================================================================
-// 1. TELEFON-EINSTIEG: DIE VOM MOBILTEIL GEFORDERTE menu.jsp
-// =========================================================================
 app.get('/info/menu.jsp', (req, res) => {
     const macRaw = req.query.mac || ''; 
     const hsid = req.query.handsetid || '';
+    const macClean = normMac(macRaw);
+
+    // NEU: Hardware-Erkennung direkt beim Menü-Aufruf
+    if (macClean && macClean !== "UNKNOWN" && hsid) {
+        let config = getConfig();
+        if (!config.gateways) config.gateways = {};
+        if (!config.gateways[macClean]) config.gateways[macClean] = { handsets: {} };
+        if (!config.gateways[macClean].handsets[hsid]) {
+            config.gateways[macClean].handsets[hsid] = { city: "", mode: "weather", lat: "", lon: "", hs_model: `Mobilteil ${hsid}`, box_model: "", box_fw: "" };
+        }
+        
+        const userAgent = req.headers['user-agent'] || '';
+        let changed = false;
+
+        if (userAgent.includes('Gigaset')) {
+            const uaParts = userAgent.split(' ');
+            if (uaParts[0] && uaParts[0].includes('/')) {
+                const [rawBoxModel, boxFw] = uaParts[0].split('/');
+                const cleanBoxModel = rawBoxModel.replace(/_/g, ' ');
+                if (config.gateways[macClean].handsets[hsid].box_model !== cleanBoxModel) { config.gateways[macClean].handsets[hsid].box_model = cleanBoxModel; changed = true; }
+                if (config.gateways[macClean].handsets[hsid].box_fw !== boxFw) { config.gateways[macClean].handsets[hsid].box_fw = boxFw; changed = true; }
+            }
+        }
+        if (changed) saveConfig(config);
+    }
 
     res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.header('Pragma', 'no-cache');
 
     const xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><body><ul><li><a href="/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}">Wetter</a></li><li><a href="#">Nachrichten</a></li><li><a href="#">Horoskop</a></li></ul></body></html>`;
-
     return res.send(xml);
 });
-
-app.get('/info/', (req, res) => { res.redirect(`/info/menu.jsp?mac=${req.query.mac || ''}&handsetid=${req.query.handsetid || ''}`); });
-app.get('/info/menu', (req, res) => { res.redirect(`/info/menu.jsp?mac=${req.query.mac || ''}&handsetid=${req.query.handsetid || ''}`); });
 
 // =========================================================================
 // SCREENSAVER-EINSTIEG / WEATHER DATA & IMAGE PROXY (request.do)
@@ -128,7 +146,23 @@ app.get('/info/request.do', async (req, res) => {
     const macRaw = req.query.mac || ''; 
     const hsid = req.query.handsetid || '1';
     const macClean = normMac(macRaw);
-
+const userAgent = req.headers['user-agent'] || '';
+    if (macClean && macClean !== "UNKNOWN" && hsid) {
+        let config = getConfig();
+        if (config.gateways && config.gateways[macClean] && config.gateways[macClean].handsets && config.gateways[macClean].handsets[hsid]) {
+            let changed = false;
+            if (userAgent.includes('Gigaset')) {
+                const uaParts = userAgent.split(' ');
+                if (uaParts[0] && uaParts[0].includes('/')) {
+                    const [rawBoxModel, boxFw] = uaParts[0].split('/');
+                    const cleanBoxModel = rawBoxModel.replace(/_/g, ' ');
+                    if (config.gateways[macClean].handsets[hsid].box_model !== cleanBoxModel) { config.gateways[macClean].handsets[hsid].box_model = cleanBoxModel; changed = true; }
+                    if (config.gateways[macClean].handsets[hsid].box_fw !== boxFw) { config.gateways[macClean].handsets[hsid].box_fw = boxFw; changed = true; }
+                }
+            }
+            if (changed) saveConfig(config);
+        }
+    }
     // BILD-WEICHE (action=image) - Bleibt unverändert für das Menü
     if (req.query.action === 'image') {
         try {
