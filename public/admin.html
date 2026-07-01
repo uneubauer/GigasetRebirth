@@ -96,15 +96,21 @@
 
     async function initDashboard() {
         try {
-            // Holt die komplette Konfiguration vom Server
-            const response = await fetch('/api/config');
+            // WICHTIG: Wir übergeben activeMac und activeHs an die API,
+            // damit der Server weiß, welches Mobilteil aktiv ist!
+            const response = await fetch(`/api/config?mac=${encodeURIComponent(activeMac)}&hsid=${encodeURIComponent(activeHs)}`);
             currentConfig = await response.json();
             
             renderSidebar(currentConfig.gateways);
 
-            // Falls Parameter in der URL waren, direkt dieses Mobilteil aktivieren
+            // Wenn das Mobilteil in der Config existiert, direkt aktivieren und rendern
             if (activeMac && activeHs && currentConfig.gateways[activeMac]?.handsets[activeHs]) {
                 selectHandset(activeMac, activeHs);
+            } else if (activeMac && activeHs) {
+                // Falls die Box im Baum ist, aber noch keine FW-Daten hat, 
+                // rendern wir trotzdem die Ansicht, damit man die Stadt eingeben kann!
+                const fallbackHs = currentConfig.gateways[activeMac]?.handsets[activeHs] || { city: '', mode: 'weather' };
+                renderMainContent(fallbackHs);
             }
         } catch (err) {
             console.error("Fehler beim Laden des Dashboards:", err);
