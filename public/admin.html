@@ -14,9 +14,12 @@
         body { font-family: 'Segoe UI', Arial, sans-serif; background: white; margin: 0; color: var(--text-main); display: flex; height: 100vh; }
         
         /* Sidebar für Geräteauswahl */
-        .sidebar { width: 250px; border-right: 1px solid var(--border-light); padding: 20px; background: var(--gigaset-gray); overflow-y: auto; }
-        .device-link { padding: 10px; margin-bottom: 5px; border-radius: 5px; cursor: pointer; border: 1px solid transparent; }
-        .device-link.active { background: white; border-color: var(--border-light); font-weight: bold; }
+        .sidebar { width: 280px; border-right: 1px solid var(--border-light); padding: 20px; background: var(--gigaset-gray); overflow-y: auto; display: flex; flex-direction: column; }
+        .box-title { font-size: 0.8em; font-weight: bold; color: #888; text-transform: uppercase; margin: 15px 0 5px 5px; letter-spacing: 0.5px; }
+        
+        .device-link { padding: 10px; margin-bottom: 5px; border-radius: 5px; cursor: pointer; border: 1px solid transparent; background: #fff; transition: all 0.2s; }
+        .device-link:hover { background: #f0f0f0; }
+        .device-link.active { background: white; border-color: var(--gigaset-orange); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 
         /* Main Content */
         .container { flex: 1; padding: 60px; overflow-y: auto; text-align: center; }
@@ -34,7 +37,7 @@
             transition: background 0.2s; display: flex; flex-direction: column; justify-content: flex-end;
         }
         .tile:hover { background: #f0f0f0; }
-        .tile.active { border-color: var(--border-light); background: white; }
+        .tile.active { border-color: var(--gigaset-orange); background: white; }
 
         /* Icons & Status */
         .status-icons { position: absolute; top: 15px; right: 15px; display: flex; gap: 8px; }
@@ -57,41 +60,55 @@
 
         .view-section { display: none; }
         .view-section.active { display: block; }
+        
+        .no-selection-msg { color: #888; font-style: italic; margin-top: 100px; }
     </style>
 </head>
 <body>
 
 <div class="sidebar">
-    <h3 style="padding: 0 10px; color: #666;">Mobilteile</h3>
+    <h2 style="padding: 0 5px; color: #333; font-size: 1.3em; margin-bottom: 5px;">Gigaset Admin</h2>
+    <div style="font-size:0.75em; color:#888; padding: 0 5px; margin-bottom:15px;">Meisterbetrieb Übersicht</div>
+    <hr style="border: 0; border-top: 1px solid var(--border-light); margin-bottom: 10px;">
     <div id="device-list">Lade Geräte...</div>
 </div>
 
 <div class="container" id="main-content">
-    <h1>Willkommen im Gigaset Admin</h1>
-    <div class="orange-line"></div>
-    <p style="color: #666;">Bitte wählen Sie links ein registriertes Mobilteil aus, um die Infodienste zu konfigurieren.</p>
+    <div class="no-selection-msg">
+        <h1>Willkommen im Gigaset Admin</h1>
+        <div class="orange-line"></div>
+        <p>Bitte wählen Sie links ein registriertes Mobilteil aus, um die Infodienste zu konfigurieren.</p>
+    </div>
 </div>
 
 <script>
     let unit = 'C';
-    // MAC und HSID aus der URL ziehen (?mac=XXXX&hsid=YY)
+    let currentConfig = {};
+    
+    // Globale Variablen für das aktuell ausgewählte Gerät
+    let activeMac = '';
+    let activeHs = '';
+
+    // MAC und HSID beim ersten Laden aus der URL ziehen (falls vorhanden)
     const urlParams = new URLSearchParams(window.location.search);
-    const selMac = urlParams.get('mac') || '';
-    const selHs = urlParams.get('hsid') || '';
+    activeMac = urlParams.get('mac') || '';
+    activeHs = urlParams.get('hsid') || '';
 
     async function initDashboard() {
         try {
-            // Daten von der Express-API holen
-            const response = await fetch(`/api/config?mac=${selMac}&hsid=${selHs}`);
-            const data = await response.json();
+            // Holt die komplette Konfiguration vom Server
+            const response = await fetch('/api/config');
+            currentConfig = await response.json();
             
-            renderSidebar(data.gateways);
+            renderSidebar(currentConfig.gateways);
 
-            if (data.activeHandset) {
-                renderMainContent(data.activeHandset);
+            // Falls Parameter in der URL waren, direkt dieses Mobilteil aktivieren
+            if (activeMac && activeHs && currentConfig.gateways[activeMac]?.handsets[activeHs]) {
+                selectHandset(activeMac, activeHs);
             }
         } catch (err) {
             console.error("Fehler beim Laden des Dashboards:", err);
+            document.getElementById('device-list').innerHTML = '<div style="padding:10px; color:red;">Fehler beim Laden</div>';
         }
     }
 
@@ -100,24 +117,49 @@
         let html = '';
 
         for (const mac of Object.keys(gateways)) {
-            if (mac.length < 10) continue; // System-Keys ignorieren
+            if (mac.length < 10) continue; 
             
             const hsMap = gateways[mac].handsets || {};
-            for (const hsid of Object.keys(hsMap)) {
+            const hsKeys = Object.keys(hsMap);
+            
+            if (hsKeys.length === 0) continue;
+
+            // Finde heraus, welches Box-Modell diese MAC hat (aus dem ersten synchronisierten Mobilteil)
+            const sampleHs = hsMap[hsKeys[0]];
+            const boxModel = sampleHs?.box_model || 'Gigaset Basis';
+            
+            // Titel für die Basisstation ausgeben
+            html += `<div class="box-title">${boxModel} [${mac.slice(-4)}]</div>`;
+
+            for (const hsid of hsKeys) {
                 const hs = hsMap[hsid];
-                const isActive = (hsid === selHs && mac === selMac) ? 'active' : '';
+                const isActive = (hsid === activeHs && mac === activeMac) ? 'active' : '';
                 
                 html += `
-                    <div class="device-link ${isActive}" onclick="location.href='admin.html?mac=${mac}&hsid=${hsid}'" style="padding: 12px 10px; border-bottom: 1px solid #eee;">
-                        <strong>${hs.hs_model || 'Mobilteil ' + hsid}</strong>
-                        <div style="color: var(--gigaset-orange); font-size: 0.85em; font-weight: bold; margin: 2px 0;">ID: ${hsid}</div>
-                        <div style="font-size: 0.75em; color: #888;">
-                            Basis: ${hs.box_model || 'Warte auf Sync...'}__BR__FW: ${hs.box_fw || '---'}
+                    <div class="device-link ${isActive}" id="link-${mac}-${hsid}" onclick="selectHandset('${mac}', '${hsid}')">
+                        <strong style="font-size:0.95em;">${hs.city ? 'Mobilteil: ' + hs.city : 'Mobilteil ' + hsid}</strong>
+                        <div style="color: var(--gigaset-orange); font-size: 0.8em; font-weight: bold; margin: 2px 0;">ID: ${hsid}</div>
+                        <div style="font-size: 0.75em; color: #888; line-height:1.3;">
+                            FW: ${hs.box_fw || '---'}
                         </div>
-                    </div>`.replace('__BR__', '<br>');
+                    </div>`;
             }
         }
         listContainer.innerHTML = html || '<div style="padding:10px; color:#888;">Keine Geräte gefunden</div>';
+    }
+
+    function selectHandset(mac, hsid) {
+        activeMac = mac;
+        activeHs = hsid;
+
+        // CSS-Klassen in Sidebar updaten
+        document.querySelectorAll('.device-link').forEach(el => el.classList.remove('active'));
+        const activeLink = document.getElementById(`link-${mac}-${hsid}`);
+        if (activeLink) activeLink.classList.add('active');
+
+        // Hole die Daten genau dieses einen Mobilteils aus dem Speicher
+        const hs = currentConfig.gateways[mac].handsets[hsid];
+        renderMainContent(hs);
     }
 
     function renderMainContent(hs) {
@@ -128,7 +170,7 @@
         contentContainer.innerHTML = `
             <div id="view-index" class="view-section active">
                 <div class="header-text">Willkommen – Die Konfigurationskarte Ihres Gigaset IP-Telefons. Bitte wählen Sie hier unten die gewünschten Info-Dienste aus.</div>
-                <h1>Konfiguration</h1>
+                <h1>Konfiguration für ${currentCity || 'Mobilteil ' + activeHs}</h1>
                 <div class="orange-line"></div>
                 
                 <div class="grid">
@@ -176,11 +218,11 @@
                 <h2 style="text-align:left; max-width:700px; margin: 40px auto 10px;">Stadt</h2>
                 <div class="search-box">
                     <input type="text" id="cityIn" value="${currentCity}" placeholder="Geben Sie die Stadt ein">
-                    <span class="search-icon" onclick="saveAll()">🔍</span>
+                    <span class="search-icon" onclick="saveAll()">🔍 Speichern</span>
                 </div>
                 <div class="location-table">
                     <span>Stadt / Ort</span>
-                    <span>Sachsen / Bayern</span>
+                    <span>Region / Bundesland</span>
                     <span>Deutschland</span>
                 </div>
             </div>`;
@@ -198,15 +240,17 @@
     }
 
     function saveQuick(mode) {
-        location.href = `/info/weather_save.jsp?mac=${selMac}&handsetid=${selHs}&mode=${mode}&city=Infodienste&fromAdmin=true`;
+        if (!activeMac || !activeHs) return alert('Bitte wählen Sie zuerst ein Mobilteil aus.');
+        location.href = `/info/weather_save.jsp?mac=${activeMac}&handsetid=${activeHs}&mode=${mode}&city=Infodienste&fromAdmin=true`;
     }
 
     function saveAll() {
+        if (!activeMac || !activeHs) return alert('Bitte wählen Sie zuerst ein Mobilteil aus.');
         const c = document.getElementById('cityIn').value;
-        location.href = `/info/weather_save.jsp?mac=${selMac}&handsetid=${selHs}&mode=weather&city=${encodeURIComponent(c)}&unit=${unit}&fromAdmin=true`;
+        location.href = `/info/weather_save.jsp?mac=${activeMac}&handsetid=${activeHs}&mode=weather&city=${encodeURIComponent(c)}&unit=${unit}&fromAdmin=true`;
     }
 
-    // Dashboard starten
+    // Dashboard initialisieren
     initDashboard();
 </script>
 </body>
