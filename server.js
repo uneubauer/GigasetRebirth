@@ -122,72 +122,41 @@ app.get('/info/', (req, res) => { res.redirect(`/info/menu.jsp?mac=${req.query.m
 app.get('/info/menu', (req, res) => { res.redirect(`/info/menu.jsp?mac=${req.query.mac || ''}&handsetid=${req.query.handsetid || ''}`); });
 
 // =========================================================================
-// 2. SCREENSAVER-EINSTIEG / WEATHER DATA & IMAGE PROXY (request.do)
+// SCREENSAVER-EINSTIEG / WEATHER DATA & IMAGE PROXY (request.do)
 // =========================================================================
 app.get('/info/request.do', async (req, res) => {
     const macRaw = req.query.mac || ''; 
     const hsid = req.query.handsetid || '1';
     const macClean = normMac(macRaw);
 
-    // BILD-WEICHE (action=image)
+    // BILD-WEICHE (action=image) - Bleibt unverändert für das Menü
     if (req.query.action === 'image') {
         try {
             const col = parseInt(req.query.col || req.query['amp;col']) || 0;
             const row = parseInt(req.query.row || req.query['amp;row']) || 0;
-            
-            const w = 16;
-            const h = 16;
-            const rowBytes = 2;
-            const chunks = [];
-
+            const w = 16, h = 16, rowBytes = 2, chunks = [];
             const spritesheetPath = path.join(__dirname, 'public', '_spritesheet.png'); 
 
-            if (!fs.existsSync(spritesheetPath)) {
-                console.error(`[Spritesheet-Proxy] Bilddatei nicht gefunden unter: ${spritesheetPath}`);
-                return res.status(404).end();
-            }
-
-            const extractX = col * w;
-            const extractY = row * h;
+            if (!fs.existsSync(spritesheetPath)) return res.status(404).end();
 
             const rawPixelBuffer = await sharp(spritesheetPath)
-                .extract({ left: extractX, top: extractY, width: w, height: h })
-                .ensureAlpha()
-                .raw()
-                .toBuffer();
+                .extract({ left: col * w, top: row * h, width: w, height: h })
+                .ensureAlpha().raw().toBuffer();
 
             const header = Buffer.from([0x00, 0x10, 0x00, 0x10]); 
-            
             for (let y = 0; y < h; y++) {
                 const rowBuffer = Buffer.alloc(rowBytes, 0);
                 for (let x = 0; x < w; x++) {
                     const idx = (y * w + x) * 4;
-                    const r = rawPixelBuffer[idx];
-                    const g = rawPixelBuffer[idx + 1];
-                    const b = rawPixelBuffer[idx + 2];
-                    const a = rawPixelBuffer[idx + 3];
-
-                    if (a < 30 || (r > 240 && g > 240 && b > 240)) {
-                        const byteIndex = Math.floor(x / 8);
-                        const bitIndex = x % 8;
-                        rowBuffer[byteIndex] |= (0x80 >> bitIndex);
+                    if (rawPixelBuffer[idx + 3] < 30 || (rawPixelBuffer[idx] > 240 && rawPixelBuffer[idx + 1] > 240 && rawPixelBuffer[idx + 2] > 240)) {
+                        rowBuffer[Math.floor(x / 8)] |= (0x80 >> (x % 8));
                     }
                 }
                 chunks.push(rowBuffer);
             }
-
-            const fntBuffer = Buffer.concat([header, ...chunks]);
-            
-            res.writeHead(200, {
-                'Content-Type': 'image/fnt',
-                'Content-Length': fntBuffer.length,
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Connection': 'close'
-            });
-            return res.end(fntBuffer);
-
+            res.writeHead(200, { 'Content-Type': 'image/fnt', 'Cache-Control': 'no-cache', 'Connection': 'close' });
+            return res.end(Buffer.concat([header, ...chunks]));
         } catch (error) {
-            console.error("[Spritesheet-Proxy] Fehler bei Bild-Weiche:", error.message);
             if (!res.headersSent) res.status(500).end();
             return;
         }
@@ -196,28 +165,63 @@ app.get('/info/request.do', async (req, res) => {
     // XML-GENERIERUNG FÜR REINES WETTER
     let cityName = "WETTER";
     let weatherArray = null;
+    let config = getConfig();
 
-    try {
-        let config = getConfig();
-        if (config.gateways && config.gateways[macClean] && config.gateways[macClean].handsets[hsid]) {
-            cityName = config.gateways[macClean].handsets[hsid].city || "WETTER";
-        }
+    // 1. Suche nach den konfigurierten Daten für diese spezifische ID
+    if (config.gateways && config.gateways[macClean] && config.gateways[macClean].handsets && config.gateways[macClean].handsets[hsid]) {
+        cityName = config.gateways[macClean].handsets[hsid].city || "WETTER";
+    }
 
-        const cachePath = path.join(webInfDir, `cache_${macClean}.json`);
-        if (fs.existsSync(cachePath)) {
+    // 2. Versuche den Cache zu laden
+    const cachePath = path.join(webInfDir, `cache_${macClean}.json`);
+    if (fs.existsSync(cachePath)) {
+        try {
             const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-            if (cacheData.handsets) {
+            if (cacheData.handsets && cacheData.handsets[hsid]) {
+                weatherArray = cacheData.handsets[hsid].weather || null;
+                cityName = cacheData.handsets[hsid].city || cityName;
+            } else if (cacheData.handsets) {
+                // Fallback: Wenn unter der langen ID kein Cache da ist, nimm das erste verfügbare Mobilteil aus dem Cache
                 const firstKey = Object.keys(cacheData.handsets)[0];
                 if (firstKey && cacheData.handsets[firstKey]) {
                     weatherArray = cacheData.handsets[firstKey].weather || null;
                     cityName = cacheData.handsets[firstKey].city || cityName;
                 }
             }
+        } catch (e) {
+            console.error("Fehler beim Lesen des Caches:", e.message);
         }
-    } catch (e) {
-        console.error("Fehler beim Verarbeiten des Wettercaches:", e);
     }
 
+    // 3. NEU: LIVE-FETCH FALLBACK, falls die Config existiert, aber noch kein Cache gebaut wurde!
+    if (!weatherArray && config.gateways && config.gateways[macClean] && config.gateways[macClean].handsets && config.gateways[macClean].handsets[hsid]) {
+        const hs = config.gateways[macClean].handsets[hsid];
+        if (hs.lat && hs.lon) {
+            console.log(`[Live-Fetch] Kein Cache für HS ${hsid}. Rufe Wetter direkt von BrightSky ab...`);
+            const today = new Date().toISOString().split('T')[0];
+            const endDate = new Date(); endDate.setDate(endDate.getDate() + 3);
+            const end = endDate.toISOString().split('T')[0];
+            const apiUrl = `https://api.brightsky.dev/weather?lat=${hs.lat}&lon=${hs.lon}&date=${today}&last_date=${end}&units=dwd`;
+
+            try {
+                const response = await fetch(apiUrl);
+                if (response.status === 200) {
+                    const weatherData = await response.json();
+                    weatherArray = weatherData.weather || null;
+                    
+                    // Schreibt das Ergebnis direkt in den Cache, damit beim nächsten Tick Ruhe ist
+                    const cacheRoot = fs.existsSync(cachePath) ? JSON.parse(fs.readFileSync(cachePath, 'utf8')) : { handsets: {}, updated: "" };
+                    cacheRoot.updated = new Date().toISOString();
+                    cacheRoot.handsets[hsid] = { city: cityName, lat: hs.lat, lon: hs.lon, weather: weatherArray || [] };
+                    fs.writeFileSync(cachePath, JSON.stringify(cacheRoot, null, 2), 'utf8');
+                }
+            } catch (apiErr) {
+                console.error(`[Live-Fetch Fehler] BrightSky direkt fehlgeschlagen:`, apiErr.message);
+            }
+        }
+    }
+
+    // XML Zusammenbau (Umlaute bereinigen)
     const displayCity = cityName.replace(/ü/g, "UE").replace(/ä/g, "AE").replace(/ö/g, "OE").replace(/ß/g, "SS").toUpperCase();
 
     res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
@@ -254,23 +258,14 @@ app.get('/info/request.do', async (req, res) => {
                 }
             }
 
-            if (!dayEntry) {
-                dayEntry = weatherArray.find(e => (e.timestamp || '').startsWith(targetStr)) || null;
-            }
+            if (!dayEntry) dayEntry = weatherArray.find(e => (e.timestamp || '').startsWith(targetStr)) || null;
 
             if (dayEntry) {
                 const tD = Math.round(dayEntry.temperature || 0);
                 const tN = nightEntry ? Math.round(nightEntry.temperature || (tD - 5)) : (tD - 5);
                 const cond = translateCondition(dayEntry.condition);
                 
-                let label = "";
-                if (d === 0) {
-                    label = "HEUTE";
-                } else if (d === 1) {
-                    label = "MORGEN";
-                } else {
-                    label = tageNamen[targetDate.getDay()];
-                }
+                let label = (d === 0) ? "HEUTE" : (d === 1) ? "MORGEN" : tageNamen[targetDate.getDay()];
                 xml += `<p style="text-align:center;">\n    ${label}<br/>\n    ${cond}&nbsp;${tD}°C/${tN}°C\n</p>`;
             }
         }
