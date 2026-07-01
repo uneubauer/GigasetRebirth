@@ -149,7 +149,7 @@ app.get('/info/request.do', async (req, res) => {
     const userAgent = req.headers['user-agent'] || '';
 
     // ---------------------------------------------------------------------
-    // 1. HARDWARE-ERKENNUNG & AUTOMATISCHE REGISTRIERUNG (AUTODISCOVERY)
+    // SCHRITT 1: HARDWARE-ERKENNUNG & AUTOMATISCHE REGISTRIERUNG
     // ---------------------------------------------------------------------
     if (macClean && macClean !== "UNKNOWN" && hsid) {
         let config = getConfig();
@@ -158,11 +158,10 @@ app.get('/info/request.do', async (req, res) => {
         if (!config.gateways) { config.gateways = {}; changed = true; }
         if (!config.gateways[macClean]) { config.gateways[macClean] = { handsets: {} }; changed = true; }
         
-        // Falls das Mobilteil komplett neu ist -> Mit Standardwerten anlegen
         if (!config.gateways[macClean].handsets[hsid]) {
             console.log(`[Autodiscovery Screensaver] Neues Mobilteil registriert: MAC ${macClean}, HS ${hsid}`);
             config.gateways[macClean].handsets[hsid] = {
-                city: "Oberdachstetten", // Standard-Fallback direkt vor Ort
+                city: "Oberdachstetten", 
                 mode: "weather",
                 lat: "49.41", 
                 lon: "10.42",
@@ -173,7 +172,6 @@ app.get('/info/request.do', async (req, res) => {
             changed = true;
         }
 
-        // Firmware & Box-Modell aus dem User-Agent ziehen (Egal ob neu oder alt!)
         if (userAgent.includes('Gigaset')) {
             const uaParts = userAgent.split(' ');
             if (uaParts[0] && uaParts[0].includes('/')) {
@@ -191,13 +189,11 @@ app.get('/info/request.do', async (req, res) => {
             }
         }
 
-        if (changed) {
-            saveConfig(config);
-        }
+        if (changed) saveConfig(config);
     }
 
     // ---------------------------------------------------------------------
-    // 2. BILD-WEICHE (action=image) - Unverändert
+    // SCHRITT 2: BILD-WEICHE (ACTION=IMAGE) - BLEIBT HIER OBEN!
     // ---------------------------------------------------------------------
     if (req.query.action === 'image') {
         try {
@@ -232,7 +228,7 @@ app.get('/info/request.do', async (req, res) => {
     }
 
     // ---------------------------------------------------------------------
-    // 3. XML-GENERIERUNG & CACHE-CHECK
+    // SCHRITT 3: REINER XML-WETTER-ZUSAMMENBAU & CACHE-CHECK
     // ---------------------------------------------------------------------
     let cityName = "WETTER";
     let weatherArray = null;
@@ -242,6 +238,7 @@ app.get('/info/request.do', async (req, res) => {
         cityName = config.gateways[macClean].handsets[hsid].city || "WETTER";
     }
 
+    // Präziser Cache-Check ohne den verfälschenden "firstKey"-Fallback
     const cachePath = path.join(webInfDir, `cache_${macClean}.json`);
     if (fs.existsSync(cachePath)) {
         try {
@@ -249,12 +246,6 @@ app.get('/info/request.do', async (req, res) => {
             if (cacheData.handsets && cacheData.handsets[hsid]) {
                 weatherArray = cacheData.handsets[hsid].weather || null;
                 cityName = cacheData.handsets[hsid].city || cityName;
-            } else if (cacheData.handsets) {
-                const firstKey = Object.keys(cacheData.handsets)[0];
-                if (firstKey && cacheData.handsets[firstKey]) {
-                    weatherArray = cacheData.handsets[firstKey].weather || null;
-                    cityName = cacheData.handsets[firstKey].city || cityName;
-                }
             }
         } catch (e) {
             console.error("Fehler beim Lesen des Caches:", e.message);
@@ -262,12 +253,12 @@ app.get('/info/request.do', async (req, res) => {
     }
 
     // ---------------------------------------------------------------------
-    // 4. LIVE-FETCH FALLBACK (Trifft jetzt sofort beim ersten Aufruf)
+    // SCHRITT 4: LIVE-FETCH FALLBACK (Falls der Cache frisch gelöscht wurde)
     // ---------------------------------------------------------------------
     if (!weatherArray && config.gateways && config.gateways[macClean] && config.gateways[macClean].handsets && config.gateways[macClean].handsets[hsid]) {
         const hs = config.gateways[macClean].handsets[hsid];
         if (hs.lat && hs.lon) {
-            console.log(`[Live-Fetch] Hole Wetter direkt für ${cityName} (HS: ${hsid})...`);
+            console.log(`[Live-Fetch] Loch im Cache für HS ${hsid}. Rufe Wetter direkt von BrightSky ab...`);
             const today = new Date().toISOString().split('T')[0];
             const endDate = new Date(); endDate.setDate(endDate.getDate() + 3);
             const end = endDate.toISOString().split('T')[0];
@@ -290,7 +281,9 @@ app.get('/info/request.do', async (req, res) => {
         }
     }
 
-    // XML Zusammenbau (Umlaute bereinigen)
+    // ---------------------------------------------------------------------
+    // SCHRITT 5: XML AUSGABE AN DAS TELEFON
+    // ---------------------------------------------------------------------
     const displayCity = cityName.replace(/ü/g, "UE").replace(/ä/g, "AE").replace(/ö/g, "OE").replace(/ß/g, "SS").toUpperCase();
 
     res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
@@ -425,9 +418,9 @@ app.get('/info/weather_search', handleWeatherSearch);
 app.get('/info/weather_search.jsp', handleWeatherSearch);
 
 // =========================================================================
-// 4. SPEICHERN & REFRESH
+// 4. SPEICHERN & REFRESH (SOFORTIGES UPDATE ERZWINGEN)
 // =========================================================================
-app.get('/info/weather_save.jsp', (req, res) => {
+app.get('/info/weather_save.jsp', async (req, res) => {
     let macRaw = req.query.mac || '';
     let hsid = req.query.handsetid || '';
     let city = req.query.city || '';
@@ -453,13 +446,45 @@ app.get('/info/weather_save.jsp', (req, res) => {
         if (fs.existsSync(CITIES_PATH)) {
             try {
                 const citiesData = JSON.parse(fs.readFileSync(CITIES_PATH, 'utf8')).cities || [];
-                const foundCity = citiesData.find(c => c.name.toLowerCase() === city.toLowerCase());
+                const foundCity = citiesData.find(c => c.name.toLowerCase().trim() === city.toLowerCase().trim());
+                
                 if (foundCity) {
                     config.gateways[mac].handsets[hsid].lat = foundCity.lat;
                     config.gateways[mac].handsets[hsid].lon = foundCity.lon;
+                    console.log(`[Save] ${city} erfolgreich zugeordnet.`);
+                    
+                    // Altes Cache-File radikal löschen, um Altlasten zu vernichten
+                    const cachePath = path.join(webInfDir, `cache_${mac}.json`);
+                    if (fs.existsSync(cachePath)) {
+                        try { fs.unlinkSync(cachePath); } catch(e) {}
+                    }
+
+                    // JETZT DER TRICK: Wir holen die neuen Wetterdaten DIREKT hier beim Speichern!
+                    console.log(`[Save-Fetch] Hole sofort neue Wetterdaten für ${city}...`);
+                    const today = new Date().toISOString().split('T')[0];
+                    const endDate = new Date(); endDate.setDate(endDate.getDate() + 3);
+                    const end = endDate.toISOString().split('T')[0];
+                    const apiUrl = `https://api.brightsky.dev/weather?lat=${foundCity.lat}&lon=${foundCity.lon}&date=${today}&last_date=${end}&units=dwd`;
+
+                    const apiResp = await fetch(apiUrl);
+                    if (apiResp.status === 200) {
+                        const weatherData = await apiResp.json();
+                        const cacheRoot = {
+                            updated: new Date().toISOString(),
+                            handsets: {}
+                        };
+                        cacheRoot.handsets[hsid] = {
+                            city: city,
+                            lat: foundCity.lat,
+                            lon: foundCity.lon,
+                            weather: weatherData.weather || []
+                        };
+                        fs.writeFileSync(cachePath, JSON.stringify(cacheRoot, null, 2), 'utf8');
+                        console.log(`[Save-Fetch] Cache für ${city} erfolgreich initialisiert.`);
+                    }
                 }
             } catch (e) {
-                console.error("Fehler beim cities.json Match:", e);
+                console.error("Fehler beim Sofort-Update während des Speicherns:", e);
             }
         }
         saveConfig(config);
@@ -469,17 +494,18 @@ app.get('/info/weather_save.jsp', (req, res) => {
         return res.redirect(`/admin.html?mac=${macRaw}&hsid=${hsid}`);
     }
 
-    const xmlRedirectUrl = `/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}`;
+    // Dem Telefon wird über die URL eine Zufallszahl (Zeitstempel) mitgegeben,
+    // damit es die Weiterleitung NICHT aus dem Cache lädt!
+    const xmlRedirectUrl = `/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}&amp;t=${Date.now()}`;
 
     res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.header('Pragma', 'no-cache');
+    res.header('Expires', '0');
 
     const xml = `<?xml version="1.0" encoding="utf-8"?><!DOCTYPE html PUBLIC "-//OMA//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtmlmobile12.dtd"><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Gespeichert</title><meta http-equiv="refresh" content="1; URL=${xmlRedirectUrl}" /></head><body><p style="text-align:center;"><b>STADT GESPEICHERT!</b></p></body></html>`;
-
     return res.send(xml);
 });
-
 // =========================================================================
 // 5. WEB-ADMIN CONFIG API (Für admin.html)
 // =========================================================================
