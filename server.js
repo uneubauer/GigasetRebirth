@@ -13,19 +13,57 @@ app.use(morgan('dev'));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// =========================================================================
+// AUTOMATISCHE INITIALISIERUNG (SELBSTHEILUNG FÜR DOCKER-VOLUMES)
+// =========================================================================
+const webInfDir = path.join(__dirname, 'WEB-INF');
+const CONFIG_PATH = path.join(webInfDir, 'config.json');
+const CITIES_PATH = path.join(webInfDir, 'cities.json');
+
+// Sorge dafür, dass der WEB-INF Ordner existiert (falls leer von außen gemountet)
+if (!fs.existsSync(webInfDir)) {
+    console.log("[Setup] Erstelle fehlenden WEB-INF Ordner...");
+    fs.mkdirSync(webInfDir, { recursive: true });
+}
+
+// 1. Automatische config.json Erstellung, falls nicht vorhanden
+if (!fs.existsSync(CONFIG_PATH)) {
+    console.log("[Setup] config.json nicht gefunden. Erstelle Standard-Konfiguration...");
+    try {
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify({ gateways: {} }, null, 4), 'utf8');
+    } catch (err) {
+        console.error("[Setup-Fehler] Keine Schreibrechte für config.json:", err.message);
+    }
+}
+
+// 2. Automatische cities.json Erstellung mit Standard-Städten, falls nicht vorhanden
+if (!fs.existsSync(CITIES_PATH)) {
+    console.log("[Setup] cities.json nicht gefunden. Erstelle Standard-Städteliste...");
+    const defaultCities = {
+        cities: [
+            { name: "Ansbach", lat: "49.30", lon: "10.58" },
+            { name: "Nuernberg", lat: "49.45", lon: "11.08" },
+            { name: "Muenchen", lat: "48.13", lon: "11.57" },
+            { name: "Berlin", lat: "52.52", lon: "13.40" }
+        ]
+    };
+    try {
+        fs.writeFileSync(CITIES_PATH, JSON.stringify(defaultCities, null, 4), 'utf8');
+    } catch (err) {
+        console.error("[Setup-Fehler] Keine Schreibrechte für cities.json:", err.message);
+    }
+}
+
 // Aktiviert den statischen Ordner für dein WebUI (admin.html)
 app.use(express.static(path.join(__dirname, 'public')));
 
-const CONFIG_PATH = path.join(__dirname, 'WEB-INF', 'config.json');
-const CITIES_PATH = path.join(__dirname, 'WEB-INF', 'cities.json');
-
-// Hilfsfunktion zum Normalisieren der MAC (Analog zu normMac in der JSP)
+// Hilfsfunktion zum Normalweisen der MAC
 function normMac(mac) {
     if (!mac) return "UNKNOWN";
     return mac.replace(/[:\-]/g, '').toUpperCase().trim();
 }
 
-// Wetterkonditionen übersetzen (Analog zu clean(t) in der JSP)
+// Wetterkonditionen übersetzen
 function translateCondition(t) {
     if (!t || !t.trim()) return "Heiter";
     const r = t.toLowerCase();
@@ -37,24 +75,31 @@ function translateCondition(t) {
     if (r.includes("cloud")) return "Wolkig";
     if (r.includes("fog") || r.includes("mist")) return "Nebel";
     if (r.includes("wind")) return "Windig";
-    if (r.includes("dry")) return "Heiter";
     return "Heiter";
 }
 
 // Deutschen Wochentag ermitteln
 function getGermanDayLabel(dayIndex, offset) {
-    if (offset === 0) return "Heute";
-    const days = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
+    if (offset === 0) return "HEUTE";
+    const days = ["SO", "MO", "DI", "MI", "DO", "FR", "SA"];
     return days[dayIndex];
 }
 
 function getConfig() {
     if (!fs.existsSync(CONFIG_PATH)) return { gateways: {} };
-    try { return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); } catch (e) { return { gateways: {} }; }
+    try { 
+        return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')); 
+    } catch (e) { 
+        return { gateways: {} }; 
+    }
 }
 
 function saveConfig(config) {
-    fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 4), 'utf8');
+    try {
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 4), 'utf8');
+    } catch (err) {
+        console.error("[Rechte-Fehler] Konnte config.json nicht speichern:", err.message);
+    }
 }
 
 // =========================================================================
@@ -73,33 +118,22 @@ app.get('/info/menu.jsp', (req, res) => {
     return res.send(xml);
 });
 
-// Fallback für die alten Pfade (zur Sicherheit)
 app.get('/info/', (req, res) => { res.redirect(`/info/menu.jsp?mac=${req.query.mac || ''}&handsetid=${req.query.handsetid || ''}`); });
 app.get('/info/menu', (req, res) => { res.redirect(`/info/menu.jsp?mac=${req.query.mac || ''}&handsetid=${req.query.handsetid || ''}`); });
 
-
-
-
 // =========================================================================
-// SCREENSAVER-EINSTIEG / WEATHER DATA & IMAGE PROXY (request.do)
-// =========================================================================
-// =========================================================================
-// SCREENSAVER-EINSTIEG / WEATHER DATA & IMAGE PROXY (request.do)
+// 2. SCREENSAVER-EINSTIEG / WEATHER DATA & IMAGE PROXY (request.do)
 // =========================================================================
 app.get('/info/request.do', async (req, res) => {
     const macRaw = req.query.mac || ''; 
     const hsid = req.query.handsetid || '1';
     const macClean = normMac(macRaw);
 
-    // ---------------------------------------------------------------------
-    // WEICHENSTELLUNG - WENN EIN BILD ANGEFORDERT WIRD (Bleibt für Menü/Fallback aktiv)
-    // ---------------------------------------------------------------------
+    // BILD-WEICHE (action=image)
     if (req.query.action === 'image') {
         try {
             const col = parseInt(req.query.col || req.query['amp;col']) || 0;
             const row = parseInt(req.query.row || req.query['amp;row']) || 0;
-            
-            console.log(`[Spritesheet-Proxy] BILD-AUFRUF DIREKT ÜBER REQUEST.DO! Spalte: ${col}, Reihe: ${row}`);
             
             const w = 16;
             const h = 16;
@@ -153,19 +187,13 @@ app.get('/info/request.do', async (req, res) => {
             return res.end(fntBuffer);
 
         } catch (error) {
-            console.error("[Spritesheet-Proxy] Fehler in request.do Image-Weiche:", error.message);
+            console.error("[Spritesheet-Proxy] Fehler bei Bild-Weiche:", error.message);
             if (!res.headersSent) res.status(500).end();
             return;
         }
     }
 
-    // ---------------------------------------------------------------------
-    // AB HIER FOLGT DIE NORMALE XML-GENERIERUNG
-    // ---------------------------------------------------------------------
-    const ua = req.headers['user-agent'] || ''; 
-
-   // --- AUTODISCOVERY ENDE ---
-
+    // XML-GENERIERUNG FÜR REINES WETTER
     let cityName = "WETTER";
     let weatherArray = null;
 
@@ -175,7 +203,7 @@ app.get('/info/request.do', async (req, res) => {
             cityName = config.gateways[macClean].handsets[hsid].city || "WETTER";
         }
 
-        const cachePath = path.join(__dirname, 'WEB-INF', `cache_${macClean}.json`);
+        const cachePath = path.join(webInfDir, `cache_${macClean}.json`);
         if (fs.existsSync(cachePath)) {
             const cacheData = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
             if (cacheData.handsets) {
@@ -235,7 +263,6 @@ app.get('/info/request.do', async (req, res) => {
                 const tN = nightEntry ? Math.round(nightEntry.temperature || (tD - 5)) : (tD - 5);
                 const cond = translateCondition(dayEntry.condition);
                 
-                // Wochentag direkt hier ermitteln
                 let label = "";
                 if (d === 0) {
                     label = "HEUTE";
@@ -244,10 +271,7 @@ app.get('/info/request.do', async (req, res) => {
                 } else {
                     label = tageNamen[targetDate.getDay()];
                 }
-                xml += `<p style="text-align:center;">
-    ${label}<br/>
-    ${cond}&nbsp;${tD}°C/${tN}°C
-</p>`;
+                xml += `<p style="text-align:center;">\n    ${label}<br/>\n    ${cond}&nbsp;${tD}°C/${tN}°C\n</p>`;
             }
         }
     } else {
@@ -257,57 +281,56 @@ app.get('/info/request.do', async (req, res) => {
     xml += `</body></html>`;
     return res.send(xml);
 });
+
 // =========================================================================
-// 3. ORTSSUCHE & LISTENAUSWAHL (Abfang für beide URL-Varianten)
+// 3. ORTSSUCHE & LISTENAUSWAHL
 // =========================================================================
 const handleWeatherSearch = (req, res) => {
     let macRaw = req.query.mac || '';
     let hsid = req.query.handsetid || '';
     
-    // SRE-FIX: Falls das Telefon die Parameter doppelt schickt (Array), nimm das erste Element
     if (Array.isArray(macRaw)) macRaw = String(macRaw[0]);
     if (Array.isArray(hsid)) hsid = String(hsid[0]);
-
-    // Falls durch doppelte Parameter ein Komma im String landet, schneide es ab
     if (macRaw.includes(',')) macRaw = macRaw.split(',')[0];
 
     const mac = macRaw.replace(/:/g, '').toUpperCase().trim();
 
-    // AUTOMATISCHE ERKENNUNG INNERHALB DER ORTSSUCHE
+    // Automatische Erfassung bei Aufruf der Suche
     if (mac && hsid) {
-        // ... HIER GEHT DER REST DER FUNKTION UNVERÄNDERT WEITER ...
         const userAgent = req.headers['user-agent'] || ''; 
         let config = getConfig();
-        if (config.gateways && config.gateways[mac] && config.gateways[mac].handsets[hsid]) {
-            let hs = config.gateways[mac].handsets[hsid];
-            let changed = false;
+        
+        if (!config.gateways) config.gateways = {};
+        if (!config.gateways[mac]) config.gateways[mac] = { handsets: {} };
+        if (!config.gateways[mac].handsets[hsid]) {
+            config.gateways[mac].handsets[hsid] = { city: "", mode: "weather", lat: "", lon: "", hs_model: `Mobilteil ${hsid}`, box_model: "", box_fw: "" };
+        }
 
-            if (userAgent.includes('Gigaset')) {
-                const uaParts = userAgent.split(' ');
-                if (uaParts[0] && uaParts[0].includes('/')) {
-                    const [rawBoxModel, boxFw] = uaParts[0].split('/');
-                    const cleanBoxModel = rawBoxModel.replace(/_/g, ' ');
-                    if (hs.box_model !== cleanBoxModel) { hs.box_model = cleanBoxModel; changed = true; }
-                    if (hs.box_fw !== boxFw) { hs.box_fw = boxFw; changed = true; }
-                }
+        let hs = config.gateways[mac].handsets[hsid];
+        let changed = false;
 
-                let detectedModel = '';
-                const modelMatch = userAgent.match(/Gigaset_([A-Za-z0-9]+)/);
-                if (modelMatch && modelMatch[1]) {
-                    detectedModel = modelMatch[1].replace('IP', '').trim();
-                }
+        if (userAgent.includes('Gigaset')) {
+            const uaParts = userAgent.split(' ');
+            if (uaParts[0] && uaParts[0].includes('/')) {
+                const [rawBoxModel, boxFw] = uaParts[0].split('/');
+                const cleanBoxModel = rawBoxModel.replace(/_/g, ' ');
+                if (hs.box_model !== cleanBoxModel) { hs.box_model = cleanBoxModel; changed = true; }
+                if (hs.box_fw !== boxFw) { hs.box_fw = boxFw; changed = true; }
+            }
 
-                const currentName = hs.hs_model || '';
-                if (detectedModel && (currentName.startsWith('Mobilteil') || currentName === '')) {
+            const modelMatch = userAgent.match(/Gigaset_([A-Za-z0-9]+)/);
+            if (modelMatch && modelMatch[1]) {
+                const detectedModel = modelMatch[1].replace('IP', '').trim();
+                if (hs.hs_model.startsWith('Mobilteil') || hs.hs_model === '') {
                     hs.hs_model = `Gigaset ${detectedModel}`;
                     changed = true;
                 }
             }
+        }
 
-            if (changed) {
-                saveConfig(config);
-                console.log(`[Sync] Gerätedaten aktualisiert für HS ${hsid}: ${hs.hs_model}`);
-            }
+        if (changed) {
+            saveConfig(config);
+            console.log(`[Sync] Gerätedaten aktualisiert für HS ${hsid}: ${hs.hs_model}`);
         }
     }
     
@@ -339,7 +362,7 @@ app.get('/info/weather_search', handleWeatherSearch);
 app.get('/info/weather_search.jsp', handleWeatherSearch);
 
 // =========================================================================
-// 4. SPEICHERN & REFRESH (Absolut XML-konform escaped)
+// 4. SPEICHERN & REFRESH
 // =========================================================================
 app.get('/info/weather_save.jsp', (req, res) => {
     let macRaw = req.query.mac || '';
@@ -351,41 +374,39 @@ app.get('/info/weather_save.jsp', (req, res) => {
     if (Array.isArray(macRaw)) macRaw = String(macRaw[0]);
     if (Array.isArray(hsid)) hsid = String(hsid[0]);
     if (Array.isArray(city)) city = String(city[0]);
-
     if (macRaw.includes(',')) macRaw = macRaw.split(',')[0];
-    if (macRaw.includes('%2C')) macRaw = macRaw.split('%2C')[0];
 
     if (macRaw && hsid) {
         const mac = macRaw.replace(/:/g, '').toUpperCase().trim();
         let config = getConfig();
 
-        if (config.gateways && config.gateways[mac] && config.gateways[mac].handsets[hsid]) {
-            config.gateways[mac].handsets[hsid].city = city;
-            config.gateways[mac].handsets[hsid].mode = mode;
+        if (!config.gateways) config.gateways = {};
+        if (!config.gateways[mac]) config.gateways[mac] = { handsets: {} };
+        if (!config.gateways[mac].handsets[hsid]) config.gateways[mac].handsets[hsid] = {};
 
-            if (fs.existsSync(CITIES_PATH)) {
-                try {
-                    const citiesData = JSON.parse(fs.readFileSync(CITIES_PATH, 'utf8')).cities || [];
-                    const foundCity = citiesData.find(c => c.name.toLowerCase() === city.toLowerCase());
-                    if (foundCity) {
-                        config.gateways[mac].handsets[hsid].lat = foundCity.lat;
-                        config.gateways[mac].handsets[hsid].lon = foundCity.lon;
-                    }
-                } catch (e) {
-                    console.error("Fehler beim cities.json Match:", e);
+        config.gateways[mac].handsets[hsid].city = city;
+        config.gateways[mac].handsets[hsid].mode = mode;
+
+        if (fs.existsSync(CITIES_PATH)) {
+            try {
+                const citiesData = JSON.parse(fs.readFileSync(CITIES_PATH, 'utf8')).cities || [];
+                const foundCity = citiesData.find(c => c.name.toLowerCase() === city.toLowerCase());
+                if (foundCity) {
+                    config.gateways[mac].handsets[hsid].lat = foundCity.lat;
+                    config.gateways[mac].handsets[hsid].lon = foundCity.lon;
                 }
+            } catch (e) {
+                console.error("Fehler beim cities.json Match:", e);
             }
-            saveConfig(config);
         }
+        saveConfig(config);
     }
 
     if (fromAdmin) {
         return res.redirect(`/admin.html?mac=${macRaw}&hsid=${hsid}`);
     }
 
-    const cleanMac = encodeURIComponent(macRaw);
-    const cleanHs = encodeURIComponent(hsid);
-    const xmlRedirectUrl = `/info/weather_search?mac=${cleanMac}&amp;handsetid=${cleanHs}`;
+    const xmlRedirectUrl = `/info/weather_search?mac=${encodeURIComponent(macRaw)}&amp;handsetid=${encodeURIComponent(hsid)}`;
 
     res.header('Content-Type', 'application/xhtml+xml; charset=utf-8');
     res.header('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -397,7 +418,7 @@ app.get('/info/weather_save.jsp', (req, res) => {
 });
 
 // =========================================================================
-// 5. WEB-ADMIN CONFIG API (Liefert Daten für admin.html)
+// 5. WEB-ADMIN CONFIG API (Für admin.html)
 // =========================================================================
 app.get('/api/config', (req, res) => {
     const config = getConfig();
@@ -416,12 +437,14 @@ app.get('/api/config', (req, res) => {
 });
 
 // =========================================================================
-// 6. WETTER-UPDATE DATA FETCH (BrightSky API / DWD Übersetzung)
+// 6. WETTER-UPDATE DATA FETCH (Mit abgesichertem File-Schreibrecht-Check)
 // =========================================================================
 app.get('/info/weather_update', async (req, res) => {
     try {
         const config = getConfig();
-        if (!config.gateways) return res.status(400).json({ error: "Keine Gateways in config.json" });
+        if (!config.gateways || Object.keys(config.gateways).length === 0) {
+            return res.send("UPDATED: 0 (Keine Boxen registriert)");
+        }
 
         const today = new Date().toISOString().split('T')[0];
         const endDate = new Date();
@@ -439,20 +462,19 @@ app.get('/info/weather_update', async (req, res) => {
 
             for (const hsid of Object.keys(handsets)) {
                 const hs = handsets[hsid];
-                const lat = hs.lat || "49.4";
-                const lon = hs.lon || "10.4";
-                const city = hs.city || "Wetter";
+                // Falls noch kein Ort gewählt wurde, skippen, um API-Müll zu vermeiden
+                if (!hs.lat || !hs.lon) continue;
 
-                const apiUrl = `https://api.brightsky.dev/weather?lat=${lat}&lon=${lon}&date=${today}&last_date=${end}&units=dwd`;
+                const apiUrl = `https://api.brightsky.dev/weather?lat=${hs.lat}&lon=${hs.lon}&date=${today}&last_date=${end}&units=dwd`;
 
                 try {
                     const response = await fetch(apiUrl);
                     if (response.status === 200) {
                         const weatherData = await response.json();
                         cacheRoot.handsets[hsid] = {
-                            city: city,
-                            lat: lat,
-                            lon: lon,
+                            city: hs.city || "Wetter",
+                            lat: hs.lat,
+                            lon: hs.lon,
                             weather: weatherData.weather || []
                         };
                         hasDataForBase = true;
@@ -463,9 +485,15 @@ app.get('/info/weather_update', async (req, res) => {
                 }
             }
 
+            // HIER IST DIE ABGESICHERTE RECHTE-KONTROLLE FÜR DIE CACHE-DATEI
             if (hasDataForBase) {
-                const cacheFilePath = path.join(__dirname, 'WEB-INF', `cache_${safeMac}.json`);
-                fs.writeFileSync(cacheFilePath, JSON.stringify(cacheRoot, null, 2), 'utf8');
+                const cacheFilePath = path.join(webInfDir, `cache_${safeMac}.json`);
+                try {
+                    fs.writeFileSync(cacheFilePath, JSON.stringify(cacheRoot, null, 2), 'utf8');
+                    console.log(`[Cache] Datei erfolgreich geschrieben: cache_${safeMac}.json`);
+                } catch (writeErr) {
+                    console.error(`[CRITICAL - RECHTE FEHLER] Keine Schreibrechte für Cache-Datei '${cacheFilePath}':`, writeErr.message);
+                }
             }
         }
 
@@ -476,6 +504,7 @@ app.get('/info/weather_update', async (req, res) => {
     }
 });
 
+// Root-Verzeichnis liefert die Admin-Oberfläche aus
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'admin.html')); });
 
 // =========================================================================
@@ -485,41 +514,16 @@ const DREISSIG_MINUTEN = 30 * 60 * 1000;
 
 async function triggerInternalWeatherUpdate() {
     try {
-        console.log(`[${new Date().toISOString()}] Automatisches Wetterupdate im Container gestartet...`);
         const response = await fetch(`http://localhost:${PORT}/info/weather_update`);
         const result = await response.text();
-        console.log(`[${new Date().toISOString()}] Update-Ergebnis: ${result}`);
+        console.log(`[Cron] Automatisches Update-Ergebnis: ${result}`);
     } catch (e) {
-        console.error(`[${new Date().toISOString()}] Fehler beim automatischen Wetterupdate:`, e.message);
+        console.error(`[Cron] Fehler bei automatischem Wetterupdate:`, e.message);
     }
 }
 
-setTimeout(() => {
-    triggerInternalWeatherUpdate();
-}, 5000);
-
+// Erster Start verzögert nach 5 Sekunden
+setTimeout(triggerInternalWeatherUpdate, 5000);
 setInterval(triggerInternalWeatherUpdate, DREISSIG_MINUTEN);
-// =========================================================================
-// HILFSFUNKTION: MAPPT DEINE WEATHER-CONDITIONS AUF DAS SPRITESHEET
-// =========================================================================
-function getWeatherCoords(condition) {
-    const cond = (condition || '').toLowerCase();
 
-    // Standard-Fallback (Sonne hinter kleiner Wolke / Heiter)
-    let coords = { col: 3, row: 2 }; 
-
-    if (cond.includes('clear') || cond.includes('sonne') || cond.includes('heiter')) {
-        coords = { col: 1, row: 1 }; // Volle Sonne (Zeile 2, Spalte 2)
-    } else if (cond.includes('thunder') || cond.includes('gewitter')) {
-        coords = { col: 0, row: 1 }; // Blitz (Zeile 2, Spalte 1)
-    } else if (cond.includes('snow') || cond.includes('schnee')) {
-        coords = { col: 4, row: 0 }; // Schneeflocke groß (Zeile 1, Spalte 5)
-    } else if (cond.includes('rain') || cond.includes('regen') || cond.includes('schauer')) {
-        coords = { col: 1, row: 0 }; // Regen / Tropfen (Zeile 1, Spalte 2)
-    } else if (cond.includes('cloud') || cond.includes('wolk')) {
-        coords = { col: 4, row: 1 }; // Sonne hinter dicken Wolken (Zeile 2, Spalte 5)
-    }
-
-    return coords;
-}
 app.listen(PORT, () => { console.log(`Schlanker Gigaset Rebirth Container laeuft auf Port ${PORT}`); });
