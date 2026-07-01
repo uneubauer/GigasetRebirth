@@ -344,6 +344,7 @@ app.get('/info/request.do', async (req, res) => {
 const handleWeatherSearch = (req, res) => {
     let macRaw = req.query.mac || '';
     let hsid = req.query.handsetid || '';
+    let hsModel = req.query.hs_model || '';
     
     if (Array.isArray(macRaw)) macRaw = String(macRaw[0]);
     if (Array.isArray(hsid)) hsid = String(hsid[0]);
@@ -351,19 +352,43 @@ const handleWeatherSearch = (req, res) => {
 
     const mac = macRaw.replace(/:/g, '').toUpperCase().trim();
 
-    // Automatische Erfassung bei Aufruf der Suche
     if (mac && hsid) {
         const userAgent = req.headers['user-agent'] || ''; 
         let config = getConfig();
         
         if (!config.gateways) config.gateways = {};
         if (!config.gateways[mac]) config.gateways[mac] = { handsets: {} };
+
+        let changed = false;
+
+        // KNIFF: Wenn sich die echte Box meldet, aber noch der Browser-Dummy ("1") existiert
+        if (hsid !== '1' && config.gateways[mac].handsets['1']) {
+            console.log(`[Sync] Migriere Dummy-ID "1" auf echte HSID "${hsid}" für MAC ${mac}`);
+            // Kopiere die konfigurierten Werte (Stadt, Koordinaten etc.) auf die echte ID
+            config.gateways[mac].handsets[hsid] = {
+                ...config.gateways[mac].handsets['1'],
+                hs_model: hsModel || config.gateways[mac].handsets['1'].hs_model
+            };
+            // Lösche den Dummy "1"
+            delete config.gateways[mac].handsets['1'];
+            changed = true;
+        }
+
+        // Falls das Mobilteil komplett neu ist (weder Dummy noch echte ID existieren)
         if (!config.gateways[mac].handsets[hsid]) {
-            config.gateways[mac].handsets[hsid] = { city: "", mode: "weather", lat: "", lon: "", hs_model: `Mobilteil ${hsid}`, box_model: "", box_fw: "" };
+            config.gateways[mac].handsets[hsid] = { 
+                city: "", 
+                mode: "weather", 
+                lat: "", 
+                lon: "", 
+                hs_model: hsModel || `Mobilteil ${hsid}`, 
+                box_model: "", 
+                box_fw: "" 
+            };
+            changed = true;
         }
 
         let hs = config.gateways[mac].handsets[hsid];
-        let changed = false;
 
         if (userAgent.includes('Gigaset')) {
             const uaParts = userAgent.split(' ');
@@ -372,6 +397,10 @@ const handleWeatherSearch = (req, res) => {
                 const cleanBoxModel = rawBoxModel.replace(/_/g, ' ');
                 if (hs.box_model !== cleanBoxModel) { hs.box_model = cleanBoxModel; changed = true; }
                 if (hs.box_fw !== boxFw) { hs.box_fw = boxFw; changed = true; }
+                if (hs.hs_model === '' || hs.hs_model.startsWith('Mobilteil')) {
+                    hs.hs_model = hsModel || `Mobilteil ${hsid}`;
+                    changed = true;
+                }
             }
 
             const modelMatch = userAgent.match(/Gigaset_([A-Za-z0-9]+)/);
