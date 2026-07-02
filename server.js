@@ -147,6 +147,7 @@ app.get('/info/request.do', async (req, res) => {
     const hsid = req.query.handsetid || '1';
     const macClean = normMac(macRaw);
     const userAgent = req.headers['user-agent'] || '';
+console.log(`[UA-DEBUG] mac=${macClean} hsid=${hsid} UA="${userAgent}"`);
 
     // ---------------------------------------------------------------------
     // SCHRITT 1: HARDWARE-ERKENNUNG & AUTOMATISCHE REGISTRIERUNG
