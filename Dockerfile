@@ -1,25 +1,24 @@
-# 1. Stabile Basis (Debian-Bookworm-Slim) mit Node 20
-FROM node:20.18-bookworm-slim
+# 1. Ultra-schlanke Basis auf Alpine-Linux-Basis (ca. 43 MB)
+FROM node:20-alpine
 
 # 2. Arbeitsverzeichnis festlegen
 WORKDIR /app
 
 # 3. Abhängigkeiten installieren
 COPY package*.json ./
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 RUN npm install --production
 
 # 4. Quellcode kopieren
 COPY . .
 
-# 5. Ordner erstellen und Besitzrechte an den 'node'-User übergeben
-#    Dadurch darf der eingeschränkte User später die JSON-Dateien erzeugen.
-RUN mkdir -p WEB-INF public static/icons && \
-    chown -R node:node /app
+# 5. Ordner direkt beim Build erstellen (Root darf später schreiben)
+RUN mkdir -p WEB-INF public static/icons
 
-# 6. Sicherheits-Best-Practice: Zu Non-Root wechseln
-USER node
+# 6. Das Start-Skript ausführbar machen
+RUN chmod +x entrypoint.sh
 
-# 7. Port & Startbefehl
+# 7. Port freigeben
 EXPOSE 80
-CMD ["node", "server.js"]
+
+# 8. Der Entrypoint fängt den Start ab, macht das Update und startet Node
+ENTRYPOINT ["./entrypoint.sh"]
