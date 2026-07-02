@@ -146,6 +146,7 @@
                         <strong style="font-size:0.95em;">${hs.city ? 'Mobilteil: ' + hs.city : 'Mobilteil ' + hsid}</strong>
                         <div style="color: var(--gigaset-orange); font-size: 0.8em; font-weight: bold; margin: 2px 0;">ID: ${hsid}</div>
                         <div style="font-size: 0.75em; color: #888; line-height:1.3;">
+                            ${hs.hs_model || 'Mobilteil ' + hsid}<br>
                             FW: ${hs.box_fw || '---'}
                         </div>
                     </div>`;
@@ -177,6 +178,7 @@
             <div id="view-index" class="view-section active">
                 <div class="header-text">Willkommen – Die Konfigurationskarte Ihres Gigaset IP-Telefons. Bitte wählen Sie hier unten die gewünschten Info-Dienste aus.</div>
                 <h1>Konfiguration für ${currentCity || 'Mobilteil ' + activeHs}</h1>
+                <div style="color:#888; font-size:0.85em; margin-top:-5px;">${hs.hs_model || ''}</div>
                 <div class="orange-line"></div>
                 
                 <div class="grid">

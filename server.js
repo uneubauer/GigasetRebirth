@@ -63,6 +63,20 @@ function normMac(mac) {
     return mac.replace(/[:\-]/g, '').toUpperCase().trim();
 }
 
+// Gigaset UA-Format: "N510 IP PRO/42.263.00.000.000;SL750H PRO/116.076.00.000.000"
+// segments[0] = Basis, segments[1] = Mobilteil (falls vorhanden)
+function parseGigasetUA(userAgent) {
+    if (!userAgent) return null;
+    const segments = userAgent.split(';').map(s => s.trim()).filter(Boolean);
+    const parsed = segments.map(seg => {
+        const idx = seg.lastIndexOf('/');
+        if (idx === -1) return null;
+        return { model: seg.slice(0, idx).trim(), fw: seg.slice(idx + 1).trim() };
+    }).filter(Boolean);
+    if (parsed.length === 0) return null;
+    return { box: parsed[0] || null, handset: parsed[1] || null };
+}
+
 // Wetterkonditionen übersetzen
 function translateCondition(t) {
     if (!t || !t.trim()) return "Heiter";
@@ -119,13 +133,14 @@ app.get('/info/menu.jsp', (req, res) => {
         const userAgent = req.headers['user-agent'] || '';
         let changed = false;
 
-        if (userAgent.includes('Gigaset')) {
-            const uaParts = userAgent.split(' ');
-            if (uaParts[0] && uaParts[0].includes('/')) {
-                const [rawBoxModel, boxFw] = uaParts[0].split('/');
-                const cleanBoxModel = rawBoxModel.replace(/_/g, ' ');
-                if (config.gateways[macClean].handsets[hsid].box_model !== cleanBoxModel) { config.gateways[macClean].handsets[hsid].box_model = cleanBoxModel; changed = true; }
-                if (config.gateways[macClean].handsets[hsid].box_fw !== boxFw) { config.gateways[macClean].handsets[hsid].box_fw = boxFw; changed = true; }
+        const ua = parseGigasetUA(userAgent);
+        if (ua) {
+            if (ua.box) {
+                if (config.gateways[macClean].handsets[hsid].box_model !== ua.box.model) { config.gateways[macClean].handsets[hsid].box_model = ua.box.model; changed = true; }
+                if (config.gateways[macClean].handsets[hsid].box_fw !== ua.box.fw) { config.gateways[macClean].handsets[hsid].box_fw = ua.box.fw; changed = true; }
+            }
+            if (ua.handset) {
+                if (config.gateways[macClean].handsets[hsid].hs_model !== ua.handset.model) { config.gateways[macClean].handsets[hsid].hs_model = ua.handset.model; changed = true; }
             }
         }
         if (changed) saveConfig(config);
@@ -147,7 +162,6 @@ app.get('/info/request.do', async (req, res) => {
     const hsid = req.query.handsetid || '1';
     const macClean = normMac(macRaw);
     const userAgent = req.headers['user-agent'] || '';
-console.log(`[UA-DEBUG] mac=${macClean} hsid=${hsid} UA="${userAgent}"`);
 
     // ---------------------------------------------------------------------
     // SCHRITT 1: HARDWARE-ERKENNUNG & AUTOMATISCHE REGISTRIERUNG
@@ -173,19 +187,22 @@ console.log(`[UA-DEBUG] mac=${macClean} hsid=${hsid} UA="${userAgent}"`);
             changed = true;
         }
 
-        if (userAgent.includes('Gigaset')) {
-            const uaParts = userAgent.split(' ');
-            if (uaParts[0] && uaParts[0].includes('/')) {
-                const [rawBoxModel, boxFw] = uaParts[0].split('/');
-                const cleanBoxModel = rawBoxModel.replace(/_/g, ' ');
-                
-                if (config.gateways[macClean].handsets[hsid].box_model !== cleanBoxModel) { 
-                    config.gateways[macClean].handsets[hsid].box_model = cleanBoxModel; 
-                    changed = true; 
+        const ua = parseGigasetUA(userAgent);
+        if (ua) {
+            if (ua.box) {
+                if (config.gateways[macClean].handsets[hsid].box_model !== ua.box.model) {
+                    config.gateways[macClean].handsets[hsid].box_model = ua.box.model;
+                    changed = true;
                 }
-                if (config.gateways[macClean].handsets[hsid].box_fw !== boxFw) { 
-                    config.gateways[macClean].handsets[hsid].box_fw = boxFw; 
-                    changed = true; 
+                if (config.gateways[macClean].handsets[hsid].box_fw !== ua.box.fw) {
+                    config.gateways[macClean].handsets[hsid].box_fw = ua.box.fw;
+                    changed = true;
+                }
+            }
+            if (ua.handset) {
+                if (config.gateways[macClean].handsets[hsid].hs_model !== ua.handset.model) {
+                    config.gateways[macClean].handsets[hsid].hs_model = ua.handset.model;
+                    changed = true;
                 }
             }
         }
@@ -391,27 +408,15 @@ const handleWeatherSearch = (req, res) => {
 
         let hs = config.gateways[mac].handsets[hsid];
 
-        if (userAgent.includes('Gigaset')) {
-            const uaParts = userAgent.split(' ');
-            if (uaParts[0] && uaParts[0].includes('/')) {
-                const [rawBoxModel, boxFw] = uaParts[0].split('/');
-                const cleanBoxModel = rawBoxModel.replace(/_/g, ' ');
-                if (hs.box_model !== cleanBoxModel) { hs.box_model = cleanBoxModel; changed = true; }
-                if (hs.box_fw !== boxFw) { hs.box_fw = boxFw; changed = true; }
-                if (hs.hs_model === '' || hs.hs_model.startsWith('Mobilteil')) {
-                    hs.hs_model = hsModel || `Mobilteil ${hsid}`;
-                    changed = true;
-                }
+        const ua = parseGigasetUA(userAgent);
+        if (ua) {
+            if (ua.box) {
+                if (hs.box_model !== ua.box.model) { hs.box_model = ua.box.model; changed = true; }
+                if (hs.box_fw !== ua.box.fw) { hs.box_fw = ua.box.fw; changed = true; }
             }
-
-            const modelMatch = userAgent.match(/Gigaset_([A-Za-z0-9]+)/);
-            if (modelMatch && modelMatch[1]) {
-                const detectedModel = modelMatch[1].replace('IP', '').trim();
-                if (hs.hs_model.startsWith('Mobilteil') || hs.hs_model === '') {
-                    hs.hs_model = `Gigaset ${detectedModel}`;
-                    changed = true;
-                }
-            }
+            // Priorität für Mobilteil-Modell: UA-Handset-Segment > hs_model-Query-Param > generischer Fallback
+            const resolvedHsModel = (ua.handset && ua.handset.model) || hsModel || `Mobilteil ${hsid}`;
+            if (hs.hs_model !== resolvedHsModel) { hs.hs_model = resolvedHsModel; changed = true; }
         }
 
         if (changed) {
