@@ -220,12 +220,16 @@
             const boxModel = sampleHs?.box_model || 'Gigaset Basis';
             
             // 1. BASISSTATION (Überschrift)
-            html += `
-                <div class="box-title">
-                    <span>🎛️</span> 
-                    <span>${boxModel}</span>
-                    <span style="opacity:0.5; font-size:0.85em; font-weight:normal;">(${mac.slice(-4)})</span>
-                </div>`;
+            // Vorher: <span>🎛️</span>
+// Nachher:
+html += `
+    <div class="box-title">
+        <img src="/img/${boxModel.toLowerCase().replace(/[^a-z0-9]/g, '')}.png" 
+             onerror="this.src='/img/fallback-base.png'" 
+             style="width:20px; height:20px; object-fit:contain;">
+        <span>${boxModel}</span>
+        <span style="opacity:0.5; font-size:0.85em; font-weight:normal;">(${mac.slice(-4)})</span>
+    </div>`;
 
             // 2. MOBILTEILE DIESER BASIS
             for (const hsid of hsKeys) {
@@ -238,11 +242,11 @@
                 // Der zugeordnete Ort/Name wird zum optionalen Untertitel
                 const subLabel = hs.city || '';
                 
-                // Dynamische Zuweisung der Icons je nach Modellname
-                let avatarContent = '📞'; 
-                if (modelName.toUpperCase().includes('SL750')) avatarContent = '📱'; 
-                if (modelName.toUpperCase().includes('S850')) avatarContent = '📞';
-                
+                 // Den alten Emoji-Block komplett ersetzen:
+const imageName = modelName.toLowerCase().replace(/[^a-z0-9]/g, '');
+let avatarContent = `<img src="/img/${imageName}.png" 
+                          onerror="this.src='/img/fallback-handset.png'" 
+                          style="max-width:100%; max-height:100%; object-fit:contain;">`;
                 // Tipp für spätere echte Bilder:
                 // let avatarContent = `<img src="/img/${modelName.toLowerCase().replace(/[^a-z0-9]/g, '')}.png" style="max-width:100%; max-height:100%;">`;
 
