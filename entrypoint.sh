@@ -1,5 +1,8 @@
 #!/bin/sh
 
+echo "[Start] Installiere Zeitzonendaten..."
+apk add --no-cache tzdata
+
 echo "[Start] Suche nach aktuellen Sicherheits-Updates..."
 apk update && apk upgrade
 
