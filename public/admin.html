@@ -11,19 +11,103 @@
             --text-main: #333;
         }
 
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: white; margin: 0; color: var(--text-main); display: flex; height: 100vh; }
+        body { 
+            font-family: 'Segoe UI', Arial, sans-serif; 
+            background: white; 
+            margin: 0; 
+            color: var(--text-main); 
+            display: flex; 
+            height: 100vh; 
+        }
         
         /* Sidebar für Geräteauswahl */
-        .sidebar { width: 280px; border-right: 1px solid var(--border-light); padding: 20px; background: var(--gigaset-gray); overflow-y: auto; display: flex; flex-direction: column; }
-        .box-title { font-size: 0.8em; font-weight: bold; color: #888; text-transform: uppercase; margin: 15px 0 5px 5px; letter-spacing: 0.5px; }
+        .sidebar { 
+            width: 300px; 
+            border-right: 1px solid var(--border-light); 
+            padding: 20px; 
+            background: var(--gigaset-gray); 
+            overflow-y: auto; 
+            display: flex; 
+            flex-direction: column; 
+        }
         
-        .device-link { padding: 10px; margin-bottom: 5px; border-radius: 5px; cursor: pointer; border: 1px solid transparent; background: #fff; transition: all 0.2s; }
-        .device-link:hover { background: #f0f0f0; }
-        .device-link.active { background: white; border-color: var(--gigaset-orange); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .box-title { 
+            font-size: 0.85em; 
+            font-weight: 700; 
+            color: #555; 
+            text-transform: uppercase; 
+            margin: 25px 0 10px 5px; 
+            letter-spacing: 0.8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .device-link { 
+            padding: 12px; 
+            margin-bottom: 8px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            border: 1px solid var(--border-light); 
+            background: #fff; 
+            transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s; 
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .device-link:hover { 
+            background: #fdfdfd; 
+            border-color: #bbb;
+            transform: translateY(-1px);
+        }
+        .device-link.active { 
+            background: white; 
+            border-color: var(--gigaset-orange); 
+            box-shadow: 0 4px 12px rgba(255,153,0,0.12); 
+        }
+
+        /* Geräte-Bilder / Avatare */
+        .device-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 6px;
+            background: #fff;
+            border: 1px solid #e8e8e8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        .device-link.active .device-avatar {
+            border-color: rgba(255,153,0,0.3);
+            background: rgba(255,153,0,0.03);
+        }
+
+        .device-info {
+            flex: 1;
+            text-align: left;
+        }
+
+        .fw-badge {
+            font-size: 0.72em;
+            background: #eee;
+            color: #666;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        
         .model-badge {
-            display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 20px;
-            background: rgba(255,153,0,0.12); color: var(--gigaset-orange);
-            font-size: 0.72em; font-weight: 600; letter-spacing: 0.2px;
+            display: inline-block; 
+            margin-top: 4px; 
+            padding: 2px 8px; 
+            border-radius: 20px;
+            background: rgba(255,153,0,0.12); 
+            color: var(--gigaset-orange);
+            font-size: 0.72em; 
+            font-weight: 600; 
+            letter-spacing: 0.2px;
         }
 
         /* Main Content */
@@ -101,8 +185,6 @@
 
     async function initDashboard() {
         try {
-            // WICHTIG: Wir übergeben activeMac und activeHs an die API,
-            // damit der Server weiß, welches Mobilteil aktiv ist!
             const response = await fetch(`/api/config?mac=${encodeURIComponent(activeMac)}&hsid=${encodeURIComponent(activeHs)}`);
             currentConfig = await response.json();
             
@@ -112,8 +194,6 @@
             if (activeMac && activeHs && currentConfig.gateways[activeMac]?.handsets[activeHs]) {
                 selectHandset(activeMac, activeHs);
             } else if (activeMac && activeHs) {
-                // Falls die Box im Baum ist, aber noch keine FW-Daten hat, 
-                // rendern wir trotzdem die Ansicht, damit man die Stadt eingeben kann!
                 const fallbackHs = currentConfig.gateways[activeMac]?.handsets[activeHs] || { city: '', mode: 'weather' };
                 renderMainContent(fallbackHs);
             }
@@ -135,24 +215,61 @@
             
             if (hsKeys.length === 0) continue;
 
-            // Finde heraus, welches Box-Modell diese MAC hat (aus dem ersten synchronisierten Mobilteil)
+            // Box-Modell ermitteln (z. B. N510 IP PRO)
             const sampleHs = hsMap[hsKeys[0]];
             const boxModel = sampleHs?.box_model || 'Gigaset Basis';
             
-            // Titel für die Basisstation ausgeben
-            html += `<div class="box-title">📡 ${boxModel} <span style="opacity:0.6;">· ${mac.slice(-4)}</span></div>`;
+            // 1. BASISSTATION (Überschrift)
+            html += `
+                <div class="box-title">
+                    <span>🎛️</span> 
+                    <span>${boxModel}</span>
+                    <span style="opacity:0.5; font-size:0.85em; font-weight:normal;">(${mac.slice(-4)})</span>
+                </div>`;
 
+            // 2. MOBILTEILE DIESER BASIS
             for (const hsid of hsKeys) {
                 const hs = hsMap[hsid];
                 const isActive = (hsid === activeHs && mac === activeMac) ? 'active' : '';
-                const modelLabel = hs.hs_model || `Mobilteil ${hsid}`;
                 
+                // Modellname ist der primäre Name im Fokus
+                const modelName = hs.hs_model || `Mobilteil`;
+                
+                // Der zugeordnete Ort/Name wird zum optionalen Untertitel
+                const subLabel = hs.city || '';
+                
+                // Dynamische Zuweisung der Icons je nach Modellname
+                let avatarContent = '📞'; 
+                if (modelName.toUpperCase().includes('SL750')) avatarContent = '📱'; 
+                if (modelName.toUpperCase().includes('S850')) avatarContent = '📞';
+                
+                // Tipp für spätere echte Bilder:
+                // let avatarContent = `<img src="/img/${modelName.toLowerCase().replace(/[^a-z0-9]/g, '')}.png" style="max-width:100%; max-height:100%;">`;
+
                 html += `
                     <div class="device-link ${isActive}" id="link-${mac}-${hsid}" onclick="selectHandset('${mac}', '${hsid}')">
-                        <strong style="font-size:0.95em;">${hs.city ? 'Mobilteil: ' + hs.city : 'Mobilteil ' + hsid}</strong>
-                        <span class="model-badge">${modelLabel}</span>
-                        <div style="font-size: 0.7em; color: #aaa; margin-top:4px;">
-                            ID: ${hsid} &nbsp;·&nbsp; FW ${hs.box_fw || '---'}
+                        <!-- Bild / Avatar Box -->
+                        <div class="device-avatar">
+                            ${avatarContent}
+                        </div>
+                        
+                        <!-- Text-Informationen -->
+                        <div class="device-info">
+                            <!-- Fette Hauptzeile: Das Mobilteil-Modell -->
+                            <div style="font-size: 0.95em; font-weight: 700; color: #111; line-height: 1.2;">
+                                ${modelName}
+                            </div>
+                            
+                            <!-- Optionale zweite Zeile: Der Ort/Name -->
+                            ${subLabel ? `
+                            <div style="font-size: 0.8em; color: var(--gigaset-orange); margin-top: 2px; font-weight: 500;">
+                                📍 ${subLabel}
+                            </div>` : ''}
+                            
+                            <!-- Dritte Zeile: Firmware am unteren Rand -->
+                            <div style="font-size: 0.72em; color: #999; margin-top: 6px; display: flex; justify-content: flex-end;">
+                                <span class="fw-badge">FW: ${hs.box_fw || '---'}</span>
+                            </div>
                         </div>
                     </div>`;
             }
@@ -164,12 +281,10 @@
         activeMac = mac;
         activeHs = hsid;
 
-        // CSS-Klassen in Sidebar updaten
         document.querySelectorAll('.device-link').forEach(el => el.classList.remove('active'));
         const activeLink = document.getElementById(`link-${mac}-${hsid}`);
         if (activeLink) activeLink.classList.add('active');
 
-        // Hole die Daten genau dieses einen Mobilteils aus dem Speicher
         const hs = currentConfig.gateways[mac].handsets[hsid];
         renderMainContent(hs);
     }
@@ -182,7 +297,7 @@
         contentContainer.innerHTML = `
             <div id="view-index" class="view-section active">
                 <div class="header-text">Willkommen – Die Konfigurationskarte Ihres Gigaset IP-Telefons. Bitte wählen Sie hier unten die gewünschten Info-Dienste aus.</div>
-                <h1>Konfiguration für ${currentCity || 'Mobilteil ' + activeHs}</h1>
+                <h1>Konfiguration für ${currentCity || hs.hs_model || 'Mobilteil'}</h1>
                 ${hs.hs_model ? `<div class="model-badge" style="margin-bottom:15px;">${hs.hs_model}</div>` : ''}
                 <div class="orange-line"></div>
                 
@@ -221,7 +336,7 @@
                         <div class="tile-desc">Einheiten für Grad</div>
                     </div>
                     <div class="tile" id="tile-F" onclick="setUnit('F')" style="height:200px;">
-                        <div class="status-icons"><div class="icon-circle">✓</div></div>
+                        <div class="status-icons"><div class="icon-circle check">✓</div></div>
                         <div class="main-icon">°F</div>
                         <div class="tile-title">Fahrenheit</div>
                         <div class="tile-desc">Einheiten für Grad</div>
@@ -263,7 +378,6 @@
         location.href = `/info/weather_save.jsp?mac=${activeMac}&handsetid=${activeHs}&mode=weather&city=${encodeURIComponent(c)}&unit=${unit}&fromAdmin=true`;
     }
 
-    // Dashboard initialisieren
     initDashboard();
 </script>
 </body>
