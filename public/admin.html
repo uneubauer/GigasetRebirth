@@ -6,13 +6,15 @@
     <style>
         :root {
             --gigaset-orange: #ff9900;
-            --gigaset-gray: #f9f9f9;
-            --border-light: #e0e0e0;
+            --gigaset-orange-hover: #e68a00;
+            --gigaset-dark: #2c3e50;
+            --gigaset-gray: #f4f5f7;
+            --border-light: #dcdcdc;
             --text-main: #333;
         }
 
         body { 
-            font-family: 'Segoe UI', Arial, sans-serif; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; 
             background: white; 
             margin: 0; 
             color: var(--text-main); 
@@ -20,80 +22,125 @@
             height: 100vh; 
         }
         
-        /* Sidebar für Geräteauswahl (Verbreitert) */
+        /* Sidebar für Geräteauswahl (Original-Look) */
         .sidebar { 
-            width: 360px; 
+            width: 340px; 
             border-right: 1px solid var(--border-light); 
-            padding: 20px; 
             background: var(--gigaset-gray); 
             overflow-y: auto; 
             display: flex; 
             flex-direction: column; 
         }
-        
-        .box-title { 
-            font-size: 0.85em; 
-            font-weight: 700; 
-            color: #555; 
-            text-transform: uppercase; 
-            margin: 25px 0 10px 5px; 
-            letter-spacing: 0.8px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+
+        .sidebar-header {
+            padding: 20px 15px 15px 15px;
+            background: #fff;
+            border-bottom: 1px solid var(--border-light);
         }
         
-        .device-link { 
-            padding: 16px; 
-            margin-bottom: 10px; 
-            border-radius: 8px; 
-            cursor: pointer; 
-            border: 1px solid var(--border-light); 
-            background: #fff; 
-            transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s; 
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-        .device-link:hover { 
-            background: #fdfdfd; 
-            border-color: #bbb;
-            transform: translateY(-1px);
-        }
-        .device-link.active { 
-            background: white; 
-            border-color: var(--gigaset-orange); 
-            box-shadow: 0 4px 12px rgba(255,153,0,0.12); 
+        /* Strukturierter Block für eine Basis samt Mobilteilen */
+        .base-group {
+            margin: 15px 12px;
+            background: #fff;
+            border: 1px solid var(--border-light);
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
 
-        /* Geräte-Bilder / Avatare Boxen */
+        .box-title { 
+            font-size: 0.82em; 
+            font-weight: 700; 
+            color: #444; 
+            text-transform: uppercase; 
+            background: #eaeaea;
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            letter-spacing: 0.5px;
+        }
+
+        .handsets-list {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Mobilteil Zeile (List-Style statt Floating-Card) */
+        .device-link { 
+            padding: 12px 14px; 
+            cursor: pointer; 
+            background: #fff; 
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            border: none;
+            border-bottom: 1px solid #f0f0f0;
+            position: relative;
+            transition: background 0.15s ease;
+        }
+        .device-link:last-child {
+            border-bottom: none;
+        }
+        
+        .device-link:hover { 
+            background: #fafafa; 
+        }
+
+        /* Der markante originale Aktiv-Status */
+        .device-link.active { 
+            background: rgba(255, 153, 0, 0.04); 
+        }
+        .device-link.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: var(--gigaset-orange);
+        }
+
+        /* Kompakte Hardware-Avatare */
         .device-avatar {
-            width: 46px;
-            height: 46px;
-            border-radius: 6px;
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
             background: #fff;
-            border: 1px solid #e8e8e8;
+            border: 1px solid #e0e0e0;
             display: flex;
             align-items: center;
             justify-content: center;
             flex-shrink: 0;
             overflow: hidden;
+            padding: 2px;
         }
         .device-link.active .device-avatar {
-            border-color: rgba(255,153,0,0.3);
-            background: rgba(255,153,0,0.03);
+            border-color: var(--gigaset-orange);
         }
 
         .device-info {
             flex: 1;
             text-align: left;
+            min-w: 0;
+        }
+
+        .device-name {
+            font-size: 0.9em; 
+            font-weight: 700; 
+            color: #222; 
+            line-height: 1.2;
+        }
+        .device-link.active .device-name {
+            color: var(--gigaset-orange-hover);
         }
 
         .fw-badge {
-            font-size: 0.72em;
-            background: #eee;
+            font-size: 0.7em;
+            background: #f0f0f0;
             color: #666;
-            padding: 1px 6px;
+            padding: 1px 5px;
             border-radius: 3px;
             font-family: monospace;
         }
@@ -156,9 +203,10 @@
 <body>
 
 <div class="sidebar">
-    <h2 style="padding: 0 5px; color: #333; font-size: 1.3em; margin-bottom: 5px;">Gigaset Admin</h2>
-    <div style="font-size:0.75em; color:#888; padding: 0 5px; margin-bottom:15px;">Übersicht</div>
-    <hr style="border: 0; border-top: 1px solid var(--border-light); margin-bottom: 10px;">
+    <div class="sidebar-header">
+        <h2 style="margin: 0; color: #111; font-size: 1.25em; font-weight: 700;">Gigaset Admin</h2>
+        <div style="font-size:0.75em; color:#777; margin-top: 2px;">System-Übersicht & Infodienste</div>
+    </div>
     <div id="device-list">Lade Geräte...</div>
 </div>
 
@@ -196,7 +244,7 @@
             }
         } catch (err) {
             console.error("Fehler beim Laden des Dashboards:", err);
-            document.getElementById('device-list').innerHTML = '<div style="padding:10px; color:red;">Fehler beim Laden</div>';
+            document.getElementById('device-list').innerHTML = '<div style="padding:15px; color:red; font-size:0.9em;">Fehler beim Laden</div>';
         }
     }
 
@@ -214,19 +262,23 @@
 
             const sampleHs = hsMap[hsKeys[0]];
             const boxModel = sampleHs?.box_model || 'Gigaset Basis';
-            
-            // Formatierter Name für das Basisbild (z. B. gobox100)
             const baseImage = boxModel.toLowerCase().replace(/[^a-z0-9]/g, '');
             
-            // 1. BASISSTATION (Überschrift + Bild-Kaskade)
+            // Start der Basis-Gruppe
+            html += `<div class="base-group">`;
+            
+            // 1. BASISSTATION-HEADER
             html += `
                 <div class="box-title">
                     <img src="/img/${baseImage}.jpg" 
                          onerror="this.onerror=null; this.src='/img/${baseImage}.jpeg'; this.onerror=function(){ this.src='/img/${baseImage}.png'; this.onerror=function(){ this.src='/img/${baseImage}.webp'; this.onerror=function(){ this.src='/img/fallback.png'; } } }" 
-                         style="width:24px; height:24px; object-fit:contain; vertical-align:middle;">
+                         style="width:18px; height:18px; object-fit:contain;">
                     <span>${boxModel}</span>
-                    <span style="opacity:0.5; font-size:0.85em; font-weight:normal;">(${mac.slice(-4)})</span>
+                    <span style="opacity:0.5; font-size:0.9em; font-weight:normal; font-family:monospace; margin-left:auto;">(${mac.slice(-4)})</span>
                 </div>`;
+
+            // Container für Mobilteile öffnen
+            html += `<div class="handsets-list">`;
 
             // 2. MOBILTEILE DIESER BASIS
             for (const hsid of hsKeys) {
@@ -235,11 +287,8 @@
                 
                 const modelName = hs.hs_model || `Mobilteil`;
                 const subLabel = hs.city || '';
-                
-                // Formatierter Name für das Mobilteilbild (z. B. sl750hpro)
                 const hsImage = modelName.toLowerCase().replace(/[^a-z0-9]/g, '');
                 
-                // Flexible Bild-Kaskade für Mobilteile
                 let avatarContent = `<img src="/img/${hsImage}.jpg" 
                                           onerror="this.onerror=null; this.src='/img/${hsImage}.jpeg'; this.onerror=function(){ this.src='/img/${hsImage}.png'; this.onerror=function(){ this.src='/img/${hsImage}.webp'; this.onerror=function(){ this.src='/img/fallback.png'; } } }" 
                                           style="max-width:100%; max-height:100%; object-fit:contain;">`;
@@ -251,23 +300,24 @@
                         </div>
                         
                         <div class="device-info">
-                            <div style="font-size: 0.95em; font-weight: 700; color: #111; line-height: 1.2;">
-                                ${modelName}
-                            </div>
+                            <div class="device-name">${modelName}</div>
                             
                             ${subLabel ? `
-                            <div style="font-size: 0.8em; color: var(--gigaset-orange); margin-top: 3px; font-weight: 500;">
+                            <div style="font-size: 0.78em; color: var(--gigaset-orange); margin-top: 2px; font-weight: 600;">
                                 📍 ${subLabel}
                             </div>` : ''}
                             
-                            <div style="font-size: 0.72em; color: #999; margin-top: 6px; display: flex; justify-content: flex-start;">
+                            <div style="font-size: 0.72em; color: #999; margin-top: 4px; display: flex;">
                                 <span class="fw-badge">FW: ${hs.box_fw || '---'}</span>
                             </div>
                         </div>
                     </div>`;
             }
+            
+            // Schließen der Container
+            html += `</div></div>`;
         }
-        listContainer.innerHTML = html || '<div style="padding:10px; color:#888;">Keine Geräte gefunden</div>';
+        listContainer.innerHTML = html || '<div style="padding:15px; color:#888; font-size:0.9em;">Keine Geräte gefunden</div>';
     }
 
     function selectHandset(mac, hsid) {
