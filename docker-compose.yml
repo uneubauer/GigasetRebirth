@@ -1,17 +1,22 @@
 version: '3.8'
 
 services:
-  gigaset-server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: gigaset-wetter-container
+  gigaset-weather:
+    image: uneubauer/gigaset-infodienst:latest
+    container_name: gigaset-weather-server
+    restart: unless-stopped
     ports:
-      - "8100:8081" # Mappt Port 8100 deines Heimservers auf den internen Node-Port
-    environment:
-      - PORT=80
+      - "8100:8080"
     volumes:
-      - /home/docker/gigaset-data:/app/WEB-INF
-      # --- NEU: Verknüpft deinen lokalen Bilder-Ordner mit dem public/img Ordner im Container ---
-      - /home/docker/gigaset-images:/app/public/img
-    restart: always
+      # Verhindert, dass der Wetter-Cache bei Container-Updates gelöscht wird
+      - ./WEB-INF:/app/WEB-INF
+      
+      # NEU: Spiegelt den lokalen 'img'-Ordner direkt in den Container
+      - ./public/img:/app/public/img
+      
+      # Die System-Uhrzeit des Host-Systems wird als Volume durchgereicht
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    environment:
+      - NODE_ENV=production
+      - TZ=Europe/Berlin
