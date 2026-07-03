@@ -20,9 +20,9 @@
             height: 100vh; 
         }
         
-        /* Sidebar für Geräteauswahl */
+        /* Sidebar für Geräteauswahl (Verbreitert) */
         .sidebar { 
-            width: 300px; 
+            width: 360px; 
             border-right: 1px solid var(--border-light); 
             padding: 20px; 
             background: var(--gigaset-gray); 
@@ -40,12 +40,12 @@
             letter-spacing: 0.8px;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
         }
         
         .device-link { 
-            padding: 12px; 
-            margin-bottom: 8px; 
+            padding: 16px; 
+            margin-bottom: 10px; 
             border-radius: 8px; 
             cursor: pointer; 
             border: 1px solid var(--border-light); 
@@ -53,7 +53,7 @@
             transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s; 
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 16px;
         }
         .device-link:hover { 
             background: #fdfdfd; 
@@ -66,18 +66,18 @@
             box-shadow: 0 4px 12px rgba(255,153,0,0.12); 
         }
 
-        /* Geräte-Bilder / Avatare */
+        /* Geräte-Bilder / Avatare Boxen */
         .device-avatar {
-            width: 42px;
-            height: 42px;
+            width: 46px;
+            height: 46px;
             border-radius: 6px;
             background: #fff;
             border: 1px solid #e8e8e8;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 20px;
             flex-shrink: 0;
+            overflow: hidden;
         }
         .device-link.active .device-avatar {
             border-color: rgba(255,153,0,0.3);
@@ -93,7 +93,7 @@
             font-size: 0.72em;
             background: #eee;
             color: #666;
-            padding: 1px 5px;
+            padding: 1px 6px;
             border-radius: 3px;
             font-family: monospace;
         }
@@ -174,11 +174,9 @@
     let unit = 'C';
     let currentConfig = {};
     
-    // Globale Variablen für das aktuell ausgewählte Gerät
     let activeMac = '';
     let activeHs = '';
 
-    // MAC und HSID beim ersten Laden aus der URL ziehen (falls vorhanden)
     const urlParams = new URLSearchParams(window.location.search);
     activeMac = urlParams.get('mac') || '';
     activeHs = urlParams.get('hsid') || '';
@@ -190,7 +188,6 @@
             
             renderSidebar(currentConfig.gateways);
 
-            // Wenn das Mobilteil in der Config existiert, direkt aktivieren und rendern
             if (activeMac && activeHs && currentConfig.gateways[activeMac]?.handsets[activeHs]) {
                 selectHandset(activeMac, activeHs);
             } else if (activeMac && activeHs) {
@@ -215,63 +212,55 @@
             
             if (hsKeys.length === 0) continue;
 
-            // Box-Modell ermitteln (z. B. N510 IP PRO)
             const sampleHs = hsMap[hsKeys[0]];
             const boxModel = sampleHs?.box_model || 'Gigaset Basis';
             
-            // 1. BASISSTATION (Überschrift)
-            // Vorher: <span>🎛️</span>
-// Nachher:
-html += `
-    <div class="box-title">
-        <img src="/img/${boxModel.toLowerCase().replace(/[^a-z0-9]/g, '')}.png" 
-             onerror="this.src='/img/fallback-base.png'" 
-             style="width:20px; height:20px; object-fit:contain;">
-        <span>${boxModel}</span>
-        <span style="opacity:0.5; font-size:0.85em; font-weight:normal;">(${mac.slice(-4)})</span>
-    </div>`;
+            // Formatierter Name für das Basisbild (z. B. gobox100)
+            const baseImage = boxModel.toLowerCase().replace(/[^a-z0-9]/g, '');
+            
+            // 1. BASISSTATION (Überschrift + Bild-Kaskade)
+            html += `
+                <div class="box-title">
+                    <img src="/img/${baseImage}.jpg" 
+                         onerror="this.onerror=null; this.src='/img/${baseImage}.jpeg'; this.onerror=function(){ this.src='/img/${baseImage}.png'; this.onerror=function(){ this.src='/img/${baseImage}.webp'; this.onerror=function(){ this.src='/img/fallback.png'; } } }" 
+                         style="width:24px; height:24px; object-fit:contain; vertical-align:middle;">
+                    <span>${boxModel}</span>
+                    <span style="opacity:0.5; font-size:0.85em; font-weight:normal;">(${mac.slice(-4)})</span>
+                </div>`;
 
             // 2. MOBILTEILE DIESER BASIS
             for (const hsid of hsKeys) {
                 const hs = hsMap[hsid];
                 const isActive = (hsid === activeHs && mac === activeMac) ? 'active' : '';
                 
-                // Modellname ist der primäre Name im Fokus
                 const modelName = hs.hs_model || `Mobilteil`;
-                
-                // Der zugeordnete Ort/Name wird zum optionalen Untertitel
                 const subLabel = hs.city || '';
                 
-                 // Den alten Emoji-Block komplett ersetzen:
-const imageName = modelName.toLowerCase().replace(/[^a-z0-9]/g, '');
-let avatarContent = `<img src="/img/${imageName}.png" 
-                          onerror="this.src='/img/fallback-handset.png'" 
-                          style="max-width:100%; max-height:100%; object-fit:contain;">`;
-                // Tipp für spätere echte Bilder:
-                // let avatarContent = `<img src="/img/${modelName.toLowerCase().replace(/[^a-z0-9]/g, '')}.png" style="max-width:100%; max-height:100%;">`;
+                // Formatierter Name für das Mobilteilbild (z. B. sl750hpro)
+                const hsImage = modelName.toLowerCase().replace(/[^a-z0-9]/g, '');
+                
+                // Flexible Bild-Kaskade für Mobilteile
+                let avatarContent = `<img src="/img/${hsImage}.jpg" 
+                                          onerror="this.onerror=null; this.src='/img/${hsImage}.jpeg'; this.onerror=function(){ this.src='/img/${hsImage}.png'; this.onerror=function(){ this.src='/img/${hsImage}.webp'; this.onerror=function(){ this.src='/img/fallback.png'; } } }" 
+                                          style="max-width:100%; max-height:100%; object-fit:contain;">`;
 
                 html += `
                     <div class="device-link ${isActive}" id="link-${mac}-${hsid}" onclick="selectHandset('${mac}', '${hsid}')">
-                        <!-- Bild / Avatar Box -->
                         <div class="device-avatar">
                             ${avatarContent}
                         </div>
                         
-                        <!-- Text-Informationen -->
                         <div class="device-info">
-                            <!-- Fette Hauptzeile: Das Mobilteil-Modell -->
                             <div style="font-size: 0.95em; font-weight: 700; color: #111; line-height: 1.2;">
                                 ${modelName}
                             </div>
                             
-                            <!-- Optionale zweite Zeile: Der Ort/Name -->
                             ${subLabel ? `
-                            <div style="font-size: 0.8em; color: var(--gigaset-orange); margin-top: 2px; font-weight: 500;">
+                            <div style="font-size: 0.8em; color: var(--gigaset-orange); margin-top: 3px; font-weight: 500;">
                                 📍 ${subLabel}
                             </div>` : ''}
                             
-                            <!-- Dritte Zeile: Firmware am unteren Rand -->
-                            <div style="font-size: 0.72em; color: #999; margin-top: 6px; display: flex; justify-content: flex-end;">
+                            <div style="font-size: 0.72em; color: #999; margin-top: 6px; display: flex; justify-content: flex-start;">
                                 <span class="fw-badge">FW: ${hs.box_fw || '---'}</span>
                             </div>
                         </div>

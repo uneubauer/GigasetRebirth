@@ -1,24 +1,26 @@
-# 1. Ultra-schlanke Basis auf Alpine-Linux-Basis (ca. 43 MB)
+# Nutzen der schlanken Node.js-Version auf Alpine Linux
 FROM node:20-alpine
 
-# 2. Arbeitsverzeichnis festlegen
+# Setzen der Zeitzone im Container (wichtig für die korrekten Wetter-Aktualisierungsintervalle)
+RUN apk add --no-cache tzdata
+ENV TZ=Europe/Berlin
+
+# Arbeitsverzeichnis im Container festlegen
 WORKDIR /app
 
-# 3. Abhängigkeiten installieren
+# Package-Dateien kopieren und Abhängigkeiten installieren
 COPY package*.json ./
 RUN npm install --production
 
-# 4. Quellcode kopieren
-COPY . .
+# Die restlichen App-Dateien kopieren
+COPY server.js ./
+COPY WEB-INF/ ./WEB-INF/
 
-# 5. Ordner direkt beim Build erstellen (Root darf später schreiben)
-RUN mkdir -p WEB-INF public static/icons
+# NEU: Den kompletten public-Ordner (für admin.html und den img/-Ordner) mit ins Image brennen
+COPY public/ ./public/
 
-# 6. Das Start-Skript ausführbar machen
-RUN chmod +x entrypoint.sh
-
-# 7. Port freigeben
+# Port freigeben, auf dem deine server.js lauscht (z.B. 80 oder 8080)
 EXPOSE 80
 
-# 8. Der Entrypoint fängt den Start ab, macht das Update und startet Node
-ENTRYPOINT ["./entrypoint.sh"]
+# App starten
+CMD ["node", "server.js"]
