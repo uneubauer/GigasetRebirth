@@ -22,7 +22,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           username: uneubauer
-          password: dckr_pat_8xPP21B6bMSWpb5RVkS5R83IU7g
+          password: 
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
